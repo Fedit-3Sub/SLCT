@@ -1,0 +1,32 @@
+{
+  "name": "Pipeline",
+  "prefix": "pipeline",
+  "uri": "pipeline://",
+  "xml": {
+    "tagAlias": "lowerCase"
+  },
+  "associations": [],
+  "types": [
+    {
+      "name": "Parameters",
+      "superClass": [ "Element" ],
+      "properties": [
+        {
+          "name": "values",
+          "isMany": true,
+          "type": "Parameter"
+        }
+      ]
+    },    
+    {
+      "name": "Parameter",
+      "properties": [
+        {
+          "name": "pipeline",
+          "isAttr": true,
+          "type": "String"
+        }
+      ]
+    }
+  ]
+}

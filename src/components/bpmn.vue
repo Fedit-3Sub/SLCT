@@ -11,6 +11,8 @@ import BpmnModeler from '@/lib/bpmn-js/Modeler';
 import {BpmnPropertiesPanelModule, BpmnPropertiesProviderModule} from '@/lib/bpmn-js-properties-panel';
 import TokenSimulationModule from '@/lib/bpmn-js-token-simulation';
 import BpmnColorPickerModule from '@/lib/bpmn-js-color-picker';
+import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor} from '@/lib/bpmn-js-pipeline-properties';
+import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 
 export default {
   name: "bpmn",
@@ -42,7 +44,16 @@ export default {
 				BpmnPropertiesProviderModule,
 				TokenSimulationModule,
 				BpmnColorPickerModule,
-			]			
+        BpmnPipelinePropertiesModule,
+        BpmnAddExporter,
+			],
+      moddleExtensions: {
+        pipeline: PipelineModdleDescriptor
+      },
+      exporter: {
+        name: 'kt-bpmn',
+        version: '1.0.0'
+      },      
     }, this.options);
 
 		this.bpmn = new BpmnModeler(_options);

@@ -18,6 +18,7 @@
       "@/*": ["src/*"],
       "bpmn-js/lib/*": ["src/lib/bpmn-js/*"],
       "@bpmn-io/properties-panel/*": ["src/lib/bpmn-properties-panel/*"],
+      "bpmn-js-properties-panel/*": ["src/lib/bpmn-js-properties-panel/*"]
     },
     "lib": [
       "esnext",

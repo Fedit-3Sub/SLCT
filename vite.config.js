@@ -15,6 +15,7 @@ const config = defineConfig({
       '@': `${path.resolve(__dirname, 'src')}`,
       'bpmn-js/lib': `${path.resolve(__dirname, 'src', 'lib', 'bpmn-js')}`,
       "@bpmn-io/properties-panel": `${path.resolve(__dirname, 'src', 'lib', 'bpmn-properties-panel')}`,
+      "bpmn-js-properties-panel": `${path.resolve(__dirname, 'src', 'lib', 'bpmn-js-properties-panel')}`,
     },
   },
   build: {

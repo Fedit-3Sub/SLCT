@@ -1,6 +1,6 @@
 <template>
   <div class="w-full h-full">
-    <bpmn url="/example.bpmn" />
+    <bpmn :id="$route.params.id" :persistent="true" />
   </div>
 </template>
 
@@ -22,6 +22,7 @@ export default {
     };
   },
   mounted: function () {
+    console.log(this.$route.params.id);
   },
   beforeDestroy: function() {
   },

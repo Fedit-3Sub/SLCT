@@ -31,6 +31,8 @@ export default function BpmnDiOrdering(eventBus, canvas) {
           elements,
           diElements;
 
+      if(!rootDi) return;
+      
       elements = selfAndAllChildren([ root ], false);
 
       // only bpmndi:Shape and bpmndi:Edge can be direct children of bpmndi:Plane

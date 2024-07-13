@@ -43,7 +43,8 @@ export default function PipelinePropertiesProvider(propertiesPanel, injector, tr
      */
     return function(groups) {
       //console.log("getGroups", element);
-      if (is(element, 'bpmn:Task') || is(element, 'bpmn:StartEvent') || is(element, 'bpmn:EndEvent')) {
+      if (is(element, 'bpmn:Processx') || is(element, 'bpmn:Task') || is(element, 'bpmn:StartEvent') || is(element, 'bpmn:EndEvent')) 
+      {
         groups.push(createParametersGroup(element, injector, translate));
       }
       return groups;
@@ -70,70 +71,79 @@ function createParametersGroup(element, injector, translate) {
 
   const id = element.id + '-parameter';
   
+  let component = Url;
+  let parameter = null;
+
   const commands = [];
   const businessObject = getBusinessObject(element);
-  let extensionElements = businessObject.get('extensionElements');
-  if (!extensionElements) {
-    extensionElements = createElement(
-      'bpmn:ExtensionElements',
-      { values: [] },
-      businessObject,
-      bpmnFactory
-    );
-
-    commands.push({
-      cmd: 'element.updateModdleProperties',
-      context: {
-        element,
-        moddleElement: businessObject,
-        properties: { extensionElements }
-      }
+  if(false) {
+    component = ProcessUrl;
+    commandStack.execute('element.updateModdleProperties', {
+      element: element,
+      moddleElement: businessObject,
+      properties: {url: 'process url'}
     });
-  }
+  } else {
+    let extensionElements = businessObject.get('extensionElements');
+    if (!extensionElements) {
+      extensionElements = createElement(
+        'bpmn:ExtensionElements',
+        { values: [] },
+        businessObject,
+        bpmnFactory
+      );
 
-  let extension = getExtension(businessObject, 'pipeline:Parameters');
-  if(!extension) {
-    extension = createParameters({
-      values: []
-    }, extensionElements, bpmnFactory);
-
-    commands.push({
-      cmd: 'element.updateModdleProperties',
-      context: {
-        element,
-        moddleElement: extensionElements,
-        properties: {
-          values: [ ...extensionElements.get('values'), extension ]
+      commands.push({
+        cmd: 'element.updateModdleProperties',
+        context: {
+          element,
+          moddleElement: businessObject,
+          properties: { extensionElements }
         }
-      }
-    });
-  }
+      });
+    }
 
-  const parameters = extension.get('values');
-  let parameter = parameters.filter(function(e) {
-    return e.$instanceOf('pipeline:Parameter');
-  })[0];
-  if(!parameter) {
-    parameter = createElement('pipeline:Parameter', {
-      url: ''
-    }, extension, bpmnFactory);
-    commands.push({
-      cmd: 'element.updateModdleProperties',
-      context: {
-        element,
-        moddleElement: extension,
-        properties: {
-          values: [ ...extension.get('values'), parameter ]
+    let extension = getExtension(businessObject, 'pipeline:Parameters');
+    if(!extension) {
+      extension = createParameters({
+        values: []
+      }, extensionElements, bpmnFactory);
+
+      commands.push({
+        cmd: 'element.updateModdleProperties',
+        context: {
+          element,
+          moddleElement: extensionElements,
+          properties: {
+            values: [ ...extensionElements.get('values'), extension ]
+          }
         }
-      }
-    });  
+      });
+    }
+
+    const parameters = extension.get('values');
+    parameter = parameters.filter(function(e) {
+      return e.$instanceOf('pipeline:Parameter');
+    })[0];
+    if(!parameter) {
+      parameter = createElement('pipeline:Parameter', {
+        url: ''
+      }, extension, bpmnFactory);
+      commands.push({
+        cmd: 'element.updateModdleProperties',
+        context: {
+          element,
+          moddleElement: extension,
+          properties: {
+            values: [ ...extension.get('values'), parameter ]
+          }
+        }
+      });  
+    }
+
+    commandStack.execute('properties-panel.multi-command-executor', commands);
+    //console.log(extension, parameters);
   }
-
-  console.log("parameters", parameters);
-
-  commandStack.execute('properties-panel.multi-command-executor', commands);
-  
-  console.log(extension, parameters);
 
   return {
     id: 'pipeline',
@@ -144,7 +154,7 @@ function createParametersGroup(element, injector, translate) {
         element,
         parameter,
         commandStack,
-        component: Url,
+        component,
         isEdited: isTextFieldEntryEdited
       },
     ]
@@ -187,14 +197,14 @@ export function createParameters(properties, parent, bpmnFactory) {
 
 function Url(props) {
   const { element, id, parameter, commandStack } = props;
-  console.log("Url", props);
+  //console.log("Url", props);
 
   const modeling = useService('modeling');
   const translate = useService('translate');
   const debounce = useService('debounceInput');
 
   const getValue = () => {
-    console.log("getValue", parameter);
+    //console.log("getValue", parameter);
     return parameter.get('url');
   };
 
@@ -217,4 +227,14 @@ function Url(props) {
     setValue={ setValue }
     debounce={ debounce }
   />;
+}
+
+export function getPipelineParameters(element) {
+  const businessObject = getBusinessObject(element);
+  const extensionElements = businessObject?.get('extensionElements');
+  const extension = extensionElements?.values.filter(function(e) { return e.$instanceOf('pipeline:Parameters'); })[0];
+  const parameters = extension?.get('values');
+  const parameter = parameters?.filter(function(e) { return e.$instanceOf('pipeline:Parameter');  })[0];
+  const url = parameter?.get('url');
+  return { url, businessObject };
 }

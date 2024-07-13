@@ -21,6 +21,7 @@ Vue.config.productionTip = false
 Vue.config.devtools = true
 Vue.filter("date", DateFilter);
 Vue.filter("error", ErrorFilter);
+ApiService.init();
 
 router.beforeEach((to, from, next) =>
   Promise.all([store.dispatch(CHECK_AUTH)]).then(next)

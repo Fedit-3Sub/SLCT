@@ -17,7 +17,8 @@
 }
 
 .bjs-container.simulation .djs-container {
-  box-shadow: inset 0px 0px 0px 4px var(--token-simulation-green-base-44, #10D070);
+  /*  box-shadow: inset 0px 0px 0px 4px var(--token-simulation-green-base-44, #10D070); */
+  box-shadow: inset 0px 0px 0px 4px #243ed1;
 }
 
 .bjs-container.simulation.paused .djs-container {
@@ -241,7 +242,8 @@
 
 .bjs-container.simulation .bts-toggle-mode,
 .bts-toggle-mode:hover {
-  background-color: var(--token-simulation-green-base-44, #10D070);
+  /* background-color: var(--token-simulation-green-base-44, #10D070); */
+  background-color: #243ed1;
   color: var(--token-simulation-white, #FFFFFF);
 }
 

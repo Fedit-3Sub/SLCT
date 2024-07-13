@@ -6,34 +6,106 @@
 </template>
 
 <script>
+import axios from "axios";
 import BpmnJS from '@/lib/bpmn-js';
 import BpmnModeler from '@/lib/bpmn-js/Modeler';
 import {BpmnPropertiesPanelModule, BpmnPropertiesProviderModule} from '@/lib/bpmn-js-properties-panel';
 import TokenSimulationModule from '@/lib/bpmn-js-token-simulation';
 import BpmnColorPickerModule from '@/lib/bpmn-js-color-picker';
-import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor} from '@/lib/bpmn-js-pipeline-properties';
+import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor, GetPipelineParameters} from '@/lib/bpmn-js-pipeline-properties';
 import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
+import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
+import ApiService from "@/common/api.service";
 
 export default {
   name: "bpmn",
   props: {
-    url: {
+    id: {
       type: String,
       required: true,
     },
+    url: {
+      type: String,
+    },
     options: {
       type: Object,
+    },
+    persistent: {
+      type: Boolean,
     }
   },
   data: function() {
     return {
-      diagramXML: null
+      diagram: null,
+      diagramXML: null,
+      process: null,
+      processUrl: null,
     };
   },
   mounted: function () {
+    var self = this;
+    console.log("bpmn", this.id, this.persistent);
+    
+    const PipelineModule = {
+      __init__: [
+        [ 'eventBus', 'bpmnjs', 'toggleMode', function(eventBus, bpmnjs, toggleMode) {
+          if(self.persistent) {
+            eventBus.on('commandStack.changed', function() {
+              setTimeout(() => {
+                bpmnjs.saveXML().then(result => {
+                  console.log("xml", result);
+
+                  ApiService.put(`/bpmns/${self.diagram?.id}`, { data: { xml: result.xml }})
+                    .then(resp => {
+                      console.log(resp);
+                    })
+                })
+              }, 500);
+            })
+          }
+          eventBus.on('diagram.init', 500, () => {
+            //toggleMode.toggleMode(true);
+          });
+          eventBus.on('tokenSimulation.playSimulation', (event) => {
+            console.log("tokenSimulation.playSimulation", event);
+            self.process = null;
+            self.processUrl = null;
+          });
+          eventBus.on('tokenSimulation.resetSimulation', (event) => {
+            console.log("tokenSimulation.resetSimulation", event);
+          });
+          eventBus.on('tokenSimulation.simulator.trace', (event) => {
+            const { action, element } = event;
+            const parameters = GetPipelineParameters(element);
+            const { url, businessObject } = parameters;
+
+            console.log("tokenSimulation.simulator.trace", action, businessObject);
+            if(action != 'signal' && action != 'enter') {
+              return;
+            }
+
+            if(is(element, 'bpmn:Process')) {
+              self.process = element;
+              return;
+            }
+            if(is(element, 'bpmn:StartEvent')) {
+              self.processUrl = url;
+              axios.post(self.processUrl, { object: JSON.stringify(businessObject) });
+              return;
+            }
+
+            if(url) {
+              const apiUrl = `${self.processUrl}${url && url[0] != '/' ? '/' : ''}${url||""}`;
+              console.log("url", apiUrl);
+              axios.post(apiUrl, { object: JSON.stringify(businessObject) });
+            }
+          });
+        } ]
+      ],
+    }
+
     var container = this.$refs.container;
 
-    var self = this;
     var _options = Object.assign({
       container: container,
 			propertiesPanel: {
@@ -46,6 +118,7 @@ export default {
 				BpmnColorPickerModule,
         BpmnPipelinePropertiesModule,
         BpmnAddExporter,
+        PipelineModule,
 			],
       moddleExtensions: {
         pipeline: PipelineModdleDescriptor
@@ -70,9 +143,39 @@ export default {
       self.bpmn.get('canvas').zoom('fit-viewport');
     });
 
-    if (this.url) {
-      this.fetchDiagram(this.url);
-    }
+    ApiService.query(`/bpmns`, { params: { 'filters[uid][$eq]': this.id } }).then(resp => {
+      console.log(resp);
+      const { data, meta } = resp.data;
+      if(!data[0]) throw { message: 'no diagram' };
+      const xml = data[0]?.attributes?.xml;
+      self.diagram = data[0];
+      self.diagramXML = xml;
+    }).catch(e => {
+      console.error(e);
+
+      const xml = `
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="4.12.0-rc.1-form-semver-maj-mi-pa">
+  <bpmn:process id="Process_074u6wt" isExecutable="false">
+    <bpmn:startEvent id="StartEvent_1y75d66" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_074u6wt">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1y75d66">
+        <dc:Bounds x="156" y="82" width="36" height="36" />
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram> 
+</bpmn:definitions>
+      `;
+
+      ApiService.post(`/bpmns`, { data: { uid: this.id, xml }})
+        .then(resp => { 
+          console.log(resp);
+          self.diagram = resp.data?.data;
+          self.diagramXML = xml;
+        });
+    })
   },
 
   beforeDestroy: function() {
@@ -82,7 +185,7 @@ export default {
   watch: {
     url: function(val) {
       this.$emit('loading');
-      this.fetchDiagram(val);
+      //this.fetchDiagram(val);
     },
     diagramXML: function(val) {
       this.bpmn.importXML(val);

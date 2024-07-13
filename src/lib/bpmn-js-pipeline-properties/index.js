@@ -1,7 +1,7 @@
 import pipelineModdleDescriptor from './descriptors/pipeline.json';
-import PipelinePropertiesProvider from './PipelinePropertiesProvider';
+import PipelinePropertiesProvider, {getPipelineParameters} from './PipelinePropertiesProvider';
 export const PipelineModdleDescriptor = pipelineModdleDescriptor;
-console.log("PipelineModdleDescriptor", PipelineModdleDescriptor)
+export const GetPipelineParameters = getPipelineParameters;
 
 export default {
   __init__: [ 'pipelinePropertiesProvider' ],

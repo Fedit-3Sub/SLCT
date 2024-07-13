@@ -8,7 +8,7 @@ Vue.use(VueRouter)
 
 export const routes: RouteConfig[] = [
   {
-    path: '/',
+    path: '/:id',
     name: 'Home',
     // NOTE: you can also apply meta information
     // meta: {authRequired: false }

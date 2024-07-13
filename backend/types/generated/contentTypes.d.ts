@@ -385,6 +385,35 @@ export interface ApiBpmnBpmn extends Schema.CollectionType {
   };
 }
 
+export interface ApiPipelinePipeline extends Schema.CollectionType {
+  collectionName: 'pipelines';
+  info: {
+    singularName: 'pipeline';
+    pluralName: 'pipelines';
+    displayName: 'pipeline';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    name: Attribute.String;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::pipeline.pipeline',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::pipeline.pipeline',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
 export interface PluginUploadFile extends Schema.CollectionType {
   collectionName: 'files';
   info: {
@@ -822,6 +851,7 @@ declare module '@strapi/types' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'api::bpmn.bpmn': ApiBpmnBpmn;
+      'api::pipeline.pipeline': ApiPipelinePipeline;
       'plugin::upload.file': PluginUploadFile;
       'plugin::upload.folder': PluginUploadFolder;
       'plugin::content-releases.release': PluginContentReleasesRelease;

@@ -96,8 +96,13 @@ export default {
 
             if(url) {
               const apiUrl = `${self.processUrl}${url && url[0] != '/' ? '/' : ''}${url||""}`;
-              console.log("url", apiUrl);
-              axios.post(apiUrl, { object: JSON.stringify(businessObject) });
+              console.log("url", apiUrl, businessObject);
+              const object = {
+                id: businessObject['id'],
+                type: businessObject['$type'],
+                url,
+              }
+              axios.post(apiUrl, { uid: self.id, object });
             }
           });
         } ]

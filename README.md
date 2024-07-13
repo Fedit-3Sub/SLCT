@@ -9,4 +9,4 @@ pnpm i
 pnpm dev
 
 cd backend
-npm run dev
+npm run develop

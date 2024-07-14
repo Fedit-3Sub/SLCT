@@ -16,6 +16,7 @@ import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor, GetPipelineParam
 import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
 import ApiService from "@/common/api.service";
+import parse from 'url-parse';
 
 export default {
   name: "bpmn",
@@ -75,11 +76,11 @@ export default {
             console.log("tokenSimulation.resetSimulation", event);
           });
           eventBus.on('tokenSimulation.simulator.trace', (event) => {
-            const { action, element } = event;
+            const { action, scope, element } = event;
             const parameters = GetPipelineParameters(element);
             const { url, businessObject } = parameters;
 
-            console.log("tokenSimulation.simulator.trace", action, businessObject);
+            console.log("tokenSimulation.simulator.trace", action, event);
             if(action != 'signal' && action != 'enter') {
               return;
             }
@@ -90,19 +91,28 @@ export default {
             }
             if(is(element, 'bpmn:StartEvent')) {
               self.processUrl = url;
-              axios.post(self.processUrl, { object: JSON.stringify(businessObject) });
-              return;
             }
 
             if(url) {
-              const apiUrl = `${self.processUrl}${url && url[0] != '/' ? '/' : ''}${url||""}`;
-              console.log("url", apiUrl, businessObject);
+              var endpoint = url;
+              var pat = /^https?:\/\//i;
+              if (!pat.test(url))
+              {
+                console.log(self.processUrl, parse(self.processUrl, true));
+                console.log(url, parse(url, true));
+                var a = parse(self.processUrl, true);
+                var b = parse(url, true);
+                a.pathname = b.pathname;
+                a.query = {...a.query, ...b.query}
+                endpoint = a.toString();
+              }
+              console.log("url", endpoint, businessObject);
               const object = {
                 id: businessObject['id'],
                 type: businessObject['$type'],
                 url,
               }
-              axios.post(apiUrl, { uid: self.id, object });
+              axios.post(endpoint, { uid: scope.parent ? scope.parent.id : scope.id, did: self.id, object });
             }
           });
         } ]

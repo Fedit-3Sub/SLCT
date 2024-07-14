@@ -7,3 +7,11 @@ matplotlib
 requests
 tensorflow
 tsai
+flask
+flask_cors
+ipykernel
+pandas_datareader
+seaborn
+datasets
+pyyaml
+tiktoken

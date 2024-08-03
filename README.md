@@ -11,25 +11,52 @@ docker compose
 docker compose up --build -d
 ```
 
-## kubernates (minikube)
+## kubernates ()
 
 ### 설치
-minikube
+microk8s
 
 ```
-curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+sudo snap install microk8s --classic
+microk8s status --wait-ready
+microk8s enable dashboard
+microk8s enable registry
+microk8s enable ingress
+microk8s kubectl get all --all-namespaces
+microk8s dashboard-proxy
 
-minikube start
-minikube dashboard
+rm -rf ~/.kube
+mkdir ~/.kube
+cd ~/.kube
+microk8s config > config
 ```
 
-build docker image
+enable low range node ports
 ```
-eval $(minikube docker-env)
+vi /var/snap/microk8s/current/args/kube-apiserver
+...
+--service-node-port-range=9900-9910
+
+microk8s stop
+microk8s start
+```
+
+build docker images
+```
 docker build -t bpmn-backend:latest -f ./backend/Dockerfile ./backend
 docker build -t bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
 docker build -t bpmn-processor:latest -f ./processor/Dockerfile ./processor
+
+import docker images (microk8s)
+```
+docker save bpmn-backend > bpmn-backend.tar
+microk8s ctr image import bpmn-backend.tar
+
+docker save bpmn-frontend > bpmn-frontend.tar
+microk8s ctr image import bpmn-frontend.tar
+
+docker save bpmn-processor > bpmn-processor.tar
+microk8s ctr image import bpmn-processor.tar
 ```
 
 ### 실행
@@ -41,9 +68,10 @@ kubectl config view --minify | grep namespace
 kubectl apply -f ./k8s/backend.yaml
 kubectl apply -f ./k8s/frontend.yaml
 kubectl apply -f ./k8s/processor.yaml
+kubectl apply -f ./k8s/ingress.yaml
 ```
 
-port forwarding
+port forwarding (minikube)
 ```
 nohup kubectl -n kt-bpmn port-forward service/bpmn-frontend-service --address=0.0.0.0 9900:9900 &
 nohup kubectl -n kt-bpmn port-forward service/bpmn-processor-service --address=0.0.0.0 9901:9901 &

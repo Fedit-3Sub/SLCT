@@ -96,6 +96,6 @@ def api_process():
 if __name__ == '__main__':
 	p = Process(target=pipeline)
 	p.start()
-	app.run(debug=True, port=3334)
+	app.run(debug=True, port=9901, host="0.0.0.0")
 	p.join()
 	

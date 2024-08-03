@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bpmn-processor-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bpmn-processor
+  template:
+    metadata:
+      labels:
+        app: bpmn-processor
+    spec:
+      containers:
+        - name: bpmn-processor
+          image: bpmn-processor:latest
+          imagePullPolicy: Never
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpmn-processor-service
+spec:
+  selector:
+    app: bpmn-processor
+  ports:
+    - name: bpmn-processor
+      protocol: TCP
+      port: 9901
+      targetPort: 9901

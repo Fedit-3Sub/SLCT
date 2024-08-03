@@ -1,0 +1,48 @@
+version: "3"
+services:
+
+  backend:
+    container_name: backend
+    build: ./backend
+    image: bpmn-backend:latest
+    restart: unless-stopped
+    env_file: ./backend/.env
+    ports:
+      - "1337:1337"
+    networks:
+      - kt-bpmn
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  
+  frontend:
+    container_name: frontend
+    build: ./frontend
+    image: bpmn-frontend:latest
+    restart: unless-stopped
+    env_file: ./frontend/.env
+    ports:
+      - "9900:9900"
+    networks:
+      - kt-bpmn
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  processor:
+    container_name: processor
+    build: ./processor
+    image: bpmn-processor:latest
+    restart: unless-stopped
+    env_file: ./processor/.env
+    volumes: 
+      - ./data:/app/data
+    ports:
+      - "9901:9901"
+    networks:
+      - kt-bpmn
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  kt-bpmn:
+    name: kt-bpmn
+    driver: bridge

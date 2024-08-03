@@ -11,7 +11,7 @@ docker compose
 docker compose up --build -d
 ```
 
-## kubernates ()
+## kubernates
 
 ### 설치
 microk8s
@@ -46,6 +46,7 @@ build docker images
 docker build -t bpmn-backend:latest -f ./backend/Dockerfile ./backend
 docker build -t bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
 docker build -t bpmn-processor:latest -f ./processor/Dockerfile ./processor
+```
 
 import docker images (microk8s)
 ```
@@ -57,6 +58,10 @@ microk8s ctr image import bpmn-frontend.tar
 
 docker save bpmn-processor > bpmn-processor.tar
 microk8s ctr image import bpmn-processor.tar
+
+rm bpmn-backend.tar
+rm bpmn-frontend.tar
+rm bpmn-processor.tar
 ```
 
 ### 실행

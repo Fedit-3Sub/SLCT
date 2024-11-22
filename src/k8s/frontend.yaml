@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bpmn-frontend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bpmn-frontend
+  template:
+    metadata:
+      labels:
+        app: bpmn-frontend
+    spec:
+      containers:
+        - name: bpmn-frontend
+          image: localhost:32000/bpmn-frontend:latest
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpmn-frontend-service
+spec:
+  selector:
+    app: bpmn-frontend
+  ports:
+    - name: bpmn-frontend
+      protocol: TCP
+      port: 9900
+      targetPort: 9900

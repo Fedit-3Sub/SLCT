@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpmn-ingress
+  labels:
+    app.kubernetes.io/name: bpmn-ingress
+    app.kubernetes.io/part-of: bpmn-ingress
+spec:
+  type: NodePort
+  ports:
+  - name: port9900
+    port: 9900
+    targetPort: 9900
+    nodePort: 9900
+    protocol: TCP
+  selector:
+    app: bpmn-frontend

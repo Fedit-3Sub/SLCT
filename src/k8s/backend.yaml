@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: bpmn-backend-pv
+  labels:
+    type: local
+spec:
+  storageClassName: hostpath
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /home/lordkeios/kt-bpmn/backend/.tmp
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bpmn-backend-pvc
+spec:
+  storageClassName: hostpath
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bpmn-backend-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bpmn-backend
+  template:
+    metadata:
+      labels:
+        app: bpmn-backend
+    spec:
+      containers:
+        - name: bpmn-backend
+          image: localhost:32000/bpmn-backend:latest
+          volumeMounts:
+          - name: bpmn-backend-storage
+            mountPath: /opt/app/.tmp
+      volumes:
+        - name: bpmn-backend-storage
+          persistentVolumeClaim:
+            claimName: bpmn-backend-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bpmn-backend-service
+spec:
+  selector:
+    app: bpmn-backend
+  ports:
+    - name: bpmn-backend
+      protocol: TCP
+      port: 1337
+      targetPort: 1337

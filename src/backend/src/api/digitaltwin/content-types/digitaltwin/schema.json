@@ -1,0 +1,18 @@
+{
+  "kind": "collectionType",
+  "collectionName": "digitaltwins",
+  "info": {
+    "singularName": "digitaltwin",
+    "pluralName": "digitaltwins",
+    "displayName": "digitaltwin"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    }
+  }
+}

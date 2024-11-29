@@ -14,8 +14,7 @@ spec:
     spec:
       containers:
         - name: bpmn-processor
-          image: bpmn-processor:latest
-          imagePullPolicy: Never
+          image: localhost:32000/bpmn-processor:latest
 
 ---
 apiVersion: v1

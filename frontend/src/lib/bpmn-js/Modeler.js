@@ -131,6 +131,7 @@ var initialDiagram =
  * @param {BaseViewerOptions} [options] The options to configure the modeler.
  */
 export default function Modeler(options) {
+	console.log('Modeler');
   BaseModeler.call(this, options);
 }
 

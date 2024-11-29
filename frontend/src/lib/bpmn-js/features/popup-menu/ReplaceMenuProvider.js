@@ -96,7 +96,7 @@ ReplaceMenuProvider.prototype._register = function() {
  * @return {PopupMenuEntries}
  */
 ReplaceMenuProvider.prototype.getPopupMenuEntries = function(target) {
-
+	console.log('ReplaceMenuProvider', target);
   var businessObject = target.businessObject;
 
   var rules = this._rules;

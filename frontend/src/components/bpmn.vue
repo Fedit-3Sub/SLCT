@@ -189,7 +189,10 @@ export default {
           console.log(resp);
           self.diagram = resp.data?.data;
           self.diagramXML = xml;
-        });
+        }).catch(e => {
+					console.error(e);
+          self.diagramXML = xml;
+				});
     })
   },
 

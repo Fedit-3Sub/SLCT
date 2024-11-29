@@ -14,8 +14,7 @@ spec:
     spec:
       containers:
         - name: bpmn-frontend
-          image: bpmn-frontend:latest
-          imagePullPolicy: Never
+          image: localhost:32000/bpmn-frontend:latest
 
 ---
 apiVersion: v1

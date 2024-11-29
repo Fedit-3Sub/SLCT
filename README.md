@@ -29,6 +29,7 @@ rm -rf ~/.kube
 mkdir ~/.kube
 cd ~/.kube
 microk8s config > config
+microk8s.inspect
 ```
 
 enable low range node ports
@@ -43,26 +44,34 @@ microk8s start
 
 build docker images
 ```
-docker build -t bpmn-backend:latest -f ./backend/Dockerfile ./backend
-docker build -t bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
-docker build -t bpmn-processor:latest -f ./processor/Dockerfile ./processor
+docker build -t localhost:32000/bpmn-backend:latest -f ./backend/Dockerfile ./backend
+docker build -t localhost:32000/bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
+docker build -t localhost:32000/bpmn-processor:latest -f ./processor/Dockerfile ./processor
+
+/etc/docker/daemon.json
+{
+  "insecure-registries" : ["localhost:32000"]
+}
+sudo systemctl restart docker
+
+docker push localhost:32000/bpmn-frontend:latest
+docker push localhost:32000/bpmn-backend:latest
+docker push localhost:32000/bpmn-processor:latest
+
+or
+docker images
+docker tag 2f53f744fa21 localhost:32000/bpmn-frontend:latest
+
 ```
 
-import docker images (microk8s)
+이미지 수정 재배포
+
 ```
-docker save bpmn-backend > bpmn-backend.tar
-microk8s ctr image import bpmn-backend.tar
-
-docker save bpmn-frontend > bpmn-frontend.tar
-microk8s ctr image import bpmn-frontend.tar
-
-docker save bpmn-processor > bpmn-processor.tar
-microk8s ctr image import bpmn-processor.tar
-
-rm bpmn-backend.tar
-rm bpmn-frontend.tar
-rm bpmn-processor.tar
+kubectl rollout restart deployment bpmn-frontend-deployment -n kt-bpmn
+kubectl rollout restart deployment bpmn-backend-deployment -n kt-bpmn
 ```
+
+
 
 ### 실행
 kubectl deployment & service
@@ -80,6 +89,9 @@ port forwarding (minikube)
 ```
 nohup kubectl -n kt-bpmn port-forward service/bpmn-frontend-service --address=0.0.0.0 9900:9900 &
 nohup kubectl -n kt-bpmn port-forward service/bpmn-processor-service --address=0.0.0.0 9901:9901 &
+kubectl -n kt-bpmn port-forward service/bpmn-backend-service --address=0.0.0.0 1337:1337
+
+kubectl exec -it bpmn-backend-deployment-bf68b48bf-sgcx8 -- sh
 ```
 
 ## local development
@@ -132,3 +144,5 @@ password: ketiKeti!@34
 
 http://localhost:9900/[다이어그램id]
 
+
+npm run strapi admin:reset-user-password --email=admin@keti.re.kr --password=ketiKeti!@34

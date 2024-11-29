@@ -3,12 +3,14 @@ import ReplaceModule from '../replace';
 
 import ReplaceMenuProvider from './ReplaceMenuProvider';
 import AutoPlaceModule from '../auto-place';
+import SimulationActionsModule from '../simulation-actions';
 
 export default {
   __depends__: [
     PopupMenuModule,
     ReplaceModule,
-    AutoPlaceModule
+    AutoPlaceModule,
+		SimulationActionsModule
   ],
   __init__: [
     'replaceMenuProvider'

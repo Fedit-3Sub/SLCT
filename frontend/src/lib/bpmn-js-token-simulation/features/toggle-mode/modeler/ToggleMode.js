@@ -48,7 +48,7 @@ export default function ToggleMode(
 ToggleMode.prototype._init = function() {
   this._container = domify(`
     <div class="bts-toggle-mode">
-      Token Simulation <span class="bts-toggle">${ ToggleOffIcon() }</span>
+      서비스 로직도구 시뮬레이션 <span class="bts-toggle">${ ToggleOffIcon() }</span>
     </div>
   `);
 
@@ -64,12 +64,12 @@ ToggleMode.prototype.toggleMode = function(active = !this._active) {
   }
 
   if (active) {
-    this._container.innerHTML = `Token Simulation <span class="bts-toggle">${ ToggleOnIcon() }</span>`;
+    this._container.innerHTML = `서비스 로직도구 시뮬레이션 <span class="bts-toggle">${ ToggleOnIcon() }</span>`;
 
     domClasses(this._canvasParent).add('simulation');
     domClasses(this._palette).add('hidden');
   } else {
-    this._container.innerHTML = `Token Simulation <span class="bts-toggle">${ ToggleOffIcon() }</span>`;
+    this._container.innerHTML = `서비스 로직도구 시뮬레이션 <span class="bts-toggle">${ ToggleOffIcon() }</span>`;
 
     domClasses(this._canvasParent).remove('simulation');
     domClasses(this._palette).remove('hidden');

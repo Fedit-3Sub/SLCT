@@ -1,6 +1,8 @@
 import {
   assign
 } from 'min-dash';
+import axios from 'axios';
+import ApiService from "@/common/api.service";
 
 /**
  * @typedef {import('diagram-js/lib/features/palette/Palette').default} Palette
@@ -30,7 +32,7 @@ import {
 export default function PaletteProvider(
     palette, create, elementFactory,
     spaceTool, lassoTool, handTool,
-    globalConnect, translate) {
+    globalConnect, translate, popupMenu) {
 
   this._palette = palette;
   this._create = create;
@@ -40,6 +42,7 @@ export default function PaletteProvider(
   this._handTool = handTool;
   this._globalConnect = globalConnect;
   this._translate = translate;
+	this._popupMenu = popupMenu;
 
   palette.registerProvider(this);
 }
@@ -52,7 +55,8 @@ PaletteProvider.$inject = [
   'lassoTool',
   'handTool',
   'globalConnect',
-  'translate'
+  'translate',
+	'popupMenu',
 ];
 
 /**
@@ -208,7 +212,96 @@ PaletteProvider.prototype.getPaletteEntries = function() {
       'bpmn:Group', 'artifact', 'bpmn-icon-group',
       translate('Create group')
     ),
+    'create.simulation': {
+			group: 'simulation',
+			className: 'bpmn-icon-service-task',
+			title: translate('Create simulation task'),
+      action: {
+        click: async (event) => {
+					console.log('Create simulation task', event, this._popupMenu);
+					ApiService.query('/digitaltwins').then(resp => {
+						var { meta, data } = resp?.data || {};
+						data = data.map(x => ({ ...x.attributes }));
+
+                      //   // 수동으로 추가하고자 하는 2개의 항목 (API 데이터 형식에 맞춰 추가)
+                      // const manualItems = [
+                      //   {
+                      //     metaModel: "customSimulation",
+                      //     simulationId: "manual1",
+                      //     simulationName: translate('도로혼잡도 예측 엔진'),
+                      //     description: "This is a manually added simulation task.",
+                      //     keywords: ["custom", "manual"],
+                      //     subjects: ["custom", "simulation"],
+                      //     creationTime: new Date().toISOString(),
+                      //     modificationTime: new Date().toISOString(),
+                      //     authorization: "Admin",
+                      //     simulationRequestParam: {
+                      //       param1: "[int]",
+                      //       param2: "[string]"
+                      //     },
+                      //     simulationResponseInfo: {
+                      //       param1: "[int]",
+                      //       param2: "[string]"
+                      //     },
+                      //     responseFormatType: "json",
+                      //     interfaceType: "custom",
+                      //     errorInfo: {
+                      //       error_info: {
+                      //         count: "0",
+                      //         errorCode: "0",
+                      //         description: "No errors"
+                      //       }
+                      //     },
+                      //     preliminaryField: null,
+                      //     simulationAccessURL: null
+                      //   },
+                      //   {
+                      //     metaModel: "customSimulation",
+                      //     simulationId: "manual2",
+                      //     simulationName: translate('주차장 혼잡도 예측지 엔진'),
+                      //     description: "This is another manually added simulation task.",
+                      //     keywords: ["custom", "manual"],
+                      //     subjects: ["custom", "simulation"],
+                      //     creationTime: new Date().toISOString(),
+                      //     modificationTime: new Date().toISOString(),
+                      //     authorization: "Admin",
+                      //     simulationRequestParam: {
+                      //       param1: "[int]",
+                      //       param2: "[string]"
+                      //     },
+                      //     simulationResponseInfo: {
+                      //       param1: "[int]",
+                      //       param2: "[string]"
+                      //     },
+                      //     responseFormatType: "json",
+                      //     interfaceType: "custom",
+                      //     errorInfo: {
+                      //       error_info: {
+                      //         count: "0",
+                      //         errorCode: "0",
+                      //         description: "No errors"
+                      //       }
+                      //     },
+                      //     preliminaryField: null,
+                      //     simulationAccessURL: null
+                      //   }
+                      // ];
+                      //
+                      // // API에서 가져온 데이터에 수동 항목 추가
+                      // data = [...data, ...manualItems];
+
+						console.log(data, meta);
+						this._popupMenu.open({ data, meta, event }, 'bpmn-simulations', event, {
+							title: translate('Select simulation'),
+							width: 400,
+							search: true
+						});
+					});
+				}
+      }
+		},
   });
+	console.log("actions", actions, new Error().stack);
 
   return actions;
 };

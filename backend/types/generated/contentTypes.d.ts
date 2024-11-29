@@ -362,58 +362,6 @@ export interface AdminTransferTokenPermission extends Schema.CollectionType {
   };
 }
 
-export interface ApiBpmnBpmn extends Schema.CollectionType {
-  collectionName: 'bpmns';
-  info: {
-    singularName: 'bpmn';
-    pluralName: 'bpmns';
-    displayName: 'bpmn';
-    description: '';
-  };
-  options: {
-    draftAndPublish: false;
-  };
-  attributes: {
-    xml: Attribute.Text;
-    uid: Attribute.UID<'api::bpmn.bpmn', 'xml'>;
-    createdAt: Attribute.DateTime;
-    updatedAt: Attribute.DateTime;
-    createdBy: Attribute.Relation<'api::bpmn.bpmn', 'oneToOne', 'admin::user'> &
-      Attribute.Private;
-    updatedBy: Attribute.Relation<'api::bpmn.bpmn', 'oneToOne', 'admin::user'> &
-      Attribute.Private;
-  };
-}
-
-export interface ApiPipelinePipeline extends Schema.CollectionType {
-  collectionName: 'pipelines';
-  info: {
-    singularName: 'pipeline';
-    pluralName: 'pipelines';
-    displayName: 'pipeline';
-  };
-  options: {
-    draftAndPublish: false;
-  };
-  attributes: {
-    name: Attribute.String;
-    createdAt: Attribute.DateTime;
-    updatedAt: Attribute.DateTime;
-    createdBy: Attribute.Relation<
-      'api::pipeline.pipeline',
-      'oneToOne',
-      'admin::user'
-    > &
-      Attribute.Private;
-    updatedBy: Attribute.Relation<
-      'api::pipeline.pipeline',
-      'oneToOne',
-      'admin::user'
-    > &
-      Attribute.Private;
-  };
-}
-
 export interface PluginUploadFile extends Schema.CollectionType {
   collectionName: 'files';
   info: {
@@ -840,6 +788,87 @@ export interface PluginUsersPermissionsUser extends Schema.CollectionType {
   };
 }
 
+export interface ApiBpmnBpmn extends Schema.CollectionType {
+  collectionName: 'bpmns';
+  info: {
+    singularName: 'bpmn';
+    pluralName: 'bpmns';
+    displayName: 'bpmn';
+    description: '';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    xml: Attribute.Text;
+    uid: Attribute.UID<'api::bpmn.bpmn', 'xml'>;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<'api::bpmn.bpmn', 'oneToOne', 'admin::user'> &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<'api::bpmn.bpmn', 'oneToOne', 'admin::user'> &
+      Attribute.Private;
+  };
+}
+
+export interface ApiDigitaltwinDigitaltwin extends Schema.CollectionType {
+  collectionName: 'digitaltwins';
+  info: {
+    singularName: 'digitaltwin';
+    pluralName: 'digitaltwins';
+    displayName: 'digitaltwin';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    name: Attribute.String;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::digitaltwin.digitaltwin',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::digitaltwin.digitaltwin',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
+export interface ApiPipelinePipeline extends Schema.CollectionType {
+  collectionName: 'pipelines';
+  info: {
+    singularName: 'pipeline';
+    pluralName: 'pipelines';
+    displayName: 'pipeline';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    name: Attribute.String;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::pipeline.pipeline',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::pipeline.pipeline',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
 declare module '@strapi/types' {
   export module Shared {
     export interface ContentTypes {
@@ -850,8 +879,6 @@ declare module '@strapi/types' {
       'admin::api-token-permission': AdminApiTokenPermission;
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
-      'api::bpmn.bpmn': ApiBpmnBpmn;
-      'api::pipeline.pipeline': ApiPipelinePipeline;
       'plugin::upload.file': PluginUploadFile;
       'plugin::upload.folder': PluginUploadFolder;
       'plugin::content-releases.release': PluginContentReleasesRelease;
@@ -860,6 +887,9 @@ declare module '@strapi/types' {
       'plugin::users-permissions.permission': PluginUsersPermissionsPermission;
       'plugin::users-permissions.role': PluginUsersPermissionsRole;
       'plugin::users-permissions.user': PluginUsersPermissionsUser;
+      'api::bpmn.bpmn': ApiBpmnBpmn;
+      'api::digitaltwin.digitaltwin': ApiDigitaltwinDigitaltwin;
+      'api::pipeline.pipeline': ApiPipelinePipeline;
     }
   }
 }

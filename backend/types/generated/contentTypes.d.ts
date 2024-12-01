@@ -840,6 +840,37 @@ export interface ApiDigitaltwinDigitaltwin extends Schema.CollectionType {
   };
 }
 
+export interface ApiFeditscraperFeditscraper extends Schema.CollectionType {
+  collectionName: 'feditscrapers';
+  info: {
+    singularName: 'feditscraper';
+    pluralName: 'feditscrapers';
+    displayName: 'Feditscraper';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    url: Attribute.String & Attribute.Required & Attribute.Unique;
+    result: Attribute.JSON;
+    createdAt: Attribute.DateTime;
+    updatedAt: Attribute.DateTime;
+    publishedAt: Attribute.DateTime;
+    createdBy: Attribute.Relation<
+      'api::feditscraper.feditscraper',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+    updatedBy: Attribute.Relation<
+      'api::feditscraper.feditscraper',
+      'oneToOne',
+      'admin::user'
+    > &
+      Attribute.Private;
+  };
+}
+
 export interface ApiPipelinePipeline extends Schema.CollectionType {
   collectionName: 'pipelines';
   info: {
@@ -889,6 +920,7 @@ declare module '@strapi/types' {
       'plugin::users-permissions.user': PluginUsersPermissionsUser;
       'api::bpmn.bpmn': ApiBpmnBpmn;
       'api::digitaltwin.digitaltwin': ApiDigitaltwinDigitaltwin;
+      'api::feditscraper.feditscraper': ApiFeditscraperFeditscraper;
       'api::pipeline.pipeline': ApiPipelinePipeline;
     }
   }

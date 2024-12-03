@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  union-twin-fe:
+    image: public.ecr.aws/y6m5z3z0/fede/union-twin-fe:latest
+    restart: always
+    environment:
+      - NDXPRO_ENV_DIGITAL_TWIN_SEARCH_URL=http://220.124.222.86:8084/meta/exsearch/list
+      - NDXPRO_ENV_TOKEN=eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiIyMSIsImF1dGgiOiJBRE1JTiIsImV4cCI6MjAwMDE2MzQ2NH0.9Ed_V3BRvA9ASU8tcFxS7Wrx16ACYV5Chn3MHb_6TUlIhTW8uPNG2d6ocNCyIBp4DNU84VqxCatLnzJc0_7cCA
+      - NDXPRO_ENV_API_URL=http://172.16.28.222:54002
+      - NDXPRO_ENV_PREDICTOR_TOOL_INSIDE_URL=http://localhost:8000
+      - NDXPRO_ENV_API_OUTSIDE_URL=http://210.217.93.129:54003
+      - NDXPRO_ENV_PREDICTOR_TOOL_OUTSIDE_URL=http://localhost:8000
+    ports:
+      - '50031:80'

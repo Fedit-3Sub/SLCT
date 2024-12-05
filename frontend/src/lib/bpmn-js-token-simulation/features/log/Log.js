@@ -33,7 +33,6 @@ import {
   InfoIcon
 } from '../../icons';
 
-
 const ICON_INFO = InfoIcon();
 
 function getElementName(element) {
@@ -90,7 +89,6 @@ function getEventTypeString(element) {
   return 'none';
 }
 
-
 export default function Log(
     eventBus, notifications,
     tokenSimulationPalette, canvas,
@@ -137,9 +135,9 @@ export default function Log(
     const isSubProcess = is(scopeElement, 'bpmn:SubProcess');
 
     const text = `${
-      isSubProcess ? (getElementName(scopeElement) || 'SubProcess') : 'Process'
+        isSubProcess ? (getElementName(scopeElement) || 'SubProcess') : 'Process'
     } ${
-      completed ? 'finished' : 'canceled'
+        completed ? 'finished' : 'canceled'
     }`;
 
     this.log({
@@ -171,7 +169,7 @@ export default function Log(
     const isSubProcess = is(scopeElement, 'bpmn:SubProcess');
 
     const text = `${
-      isSubProcess ? (getElementName(scopeElement) || 'SubProcess') : 'Process'
+        isSubProcess ? (getElementName(scopeElement) || 'SubProcess') : 'Process'
     } started`;
 
     this.log({
@@ -332,8 +330,6 @@ export default function Log(
     }
 
     if (is(element, 'bpmn:EndEvent')) {
-
-      // TODO: No trace event for terminate end events is emitted
       return this.log({
         text: elementName || 'End Event',
         icon: `bpmn-icon-end-event-${getEventTypeString(element)}`,
@@ -341,7 +337,6 @@ export default function Log(
       });
     }
   });
-
 
   eventBus.on([
     TOGGLE_MODE_EVENT,
@@ -354,12 +349,12 @@ export default function Log(
 
 Log.prototype._init = function() {
   this._container = domify(`
-    <div class="bts-log hidden djs-scrollable">
+    <div class="bts-log hidden djs-scrollable log-viewer"  style="width: 500px; height: 800px;">
       <div class="bts-header">
-        ${ LogIcon('bts-log-icon') }
-        Simulation Log
+        ${LogIcon('bts-log-icon')}
+        로그
         <button class="bts-close" aria-label="Close">
-          ${ TimesIcon() }
+          ${TimesIcon()}
         </button>
       </div>
       <div class="bts-content">
@@ -392,7 +387,7 @@ Log.prototype._init = function() {
 
   this.paletteEntry = domify(`
     <div class="bts-entry" title="Toggle Simulation Log">
-      ${ LogIcon() }
+      ${LogIcon()}
     </div>
   `);
 
@@ -442,19 +437,23 @@ Log.prototype.log = function(options) {
 
   const colorMarkup = colors ? `style="background: ${colors.primary}; color: ${colors.auxiliary}"` : '';
 
+  // 현재 날짜와 시간 추가
+  const timestamp = new Date().toLocaleString();
+
   const logEntry = domify(`
-    <p class="bts-entry ${ type } ${
+    <p class="bts-entry ${type} ${
       scope && this._scopeFilter.isShown(scope) ? '' : 'inactive'
-    }" ${
+  }" ${
       scope ? `data-scope-id="${scope.id}"` : ''
-    }>
+  }>
+      <span class="bts-timestamp">[${timestamp}]</span>
       <span class="bts-icon">${iconMarkup}</span>
-      <span class="bts-text" title="${ text }">${text}</span>
+      <span class="bts-text" title="${escapeHTML(text)}">${escapeHTML(text)}</span>
       ${
-        scope
+      scope
           ? `<span class="bts-scope" data-scope-id="${scope.id}" ${colorMarkup}>${scope.id}</span>`
           : ''
-      }
+  }
     </p>
   `);
 
@@ -462,8 +461,7 @@ Log.prototype.log = function(options) {
     this._scopeFilter.toggle(scope);
   });
 
-  // determine if the container should scroll,
-  // because it is currently scrolled to the very bottom
+  // 컨테이너가 스크롤해야 하는지 결정
   const shouldScroll = Math.abs(content.clientHeight + content.scrollTop - content.scrollHeight) < 2;
 
   content.appendChild(logEntry);
@@ -478,7 +476,7 @@ Log.prototype.clear = function() {
     this._content.removeChild(this._content.firstChild);
   }
 
-  this._placeholder = domify('<p class="bts-entry placeholder">No Entries</p>');
+  this._placeholder = domify('<p class="bts-entry placeholder">실행 버튼을 클릭하세요</p>');
 
   this._content.appendChild(this._placeholder);
 };

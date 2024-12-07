@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     Bpmn: typeof import('./components/bpmn.vue')['default']
     BPMN: typeof import('./components/BPMN.vue')['default']
+    BpmnModeler: typeof import('~icons/bpmn/modeler')['default']
     ButtonPrimary: typeof import('./components/shared/ButtonPrimary.vue')['default']
     ButtonSecondary: typeof import('./components/shared/ButtonSecondary.vue')['default']
     Feature: typeof import('./components/Feature.vue')['default']

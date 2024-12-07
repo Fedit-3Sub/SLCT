@@ -223,73 +223,6 @@ PaletteProvider.prototype.getPaletteEntries = function() {
 						var { meta, data } = resp?.data || {};
 						data = data.map(x => ({ ...x.attributes }));
 
-                        // 수동으로 추가하고자 하는 2개의 항목 (API 데이터 형식에 맞춰 추가)
-                      const manualItems = [
-                        {
-                          metaModel: "customSimulation",
-                          simulationId: "manual1",
-                          simulationName: translate('도로혼잡도 예측 엔진'),
-                          description: "This is a manually added simulation task.",
-                          keywords: ["custom", "manual"],
-                          subjects: ["custom", "simulation"],
-                          creationTime: new Date().toISOString(),
-                          modificationTime: new Date().toISOString(),
-                          authorization: "Admin",
-                          simulationRequestParam: {
-                            param1: "[int]",
-                            param2: "[string]"
-                          },
-                          simulationResponseInfo: {
-                            param1: "[int]",
-                            param2: "[string]"
-                          },
-                          responseFormatType: "json",
-                          interfaceType: "custom",
-                          errorInfo: {
-                            error_info: {
-                              count: "0",
-                              errorCode: "0",
-                              description: "No errors"
-                            }
-                          },
-                          preliminaryField: null,
-                          simulationAccessURL: null
-                        },
-                        {
-                          metaModel: "customSimulation",
-                          simulationId: "manual2",
-                          simulationName: translate('주차장 혼잡도 예측지 엔진'),
-                          description: "This is another manually added simulation task.",
-                          keywords: ["custom", "manual"],
-                          subjects: ["custom", "simulation"],
-                          creationTime: new Date().toISOString(),
-                          modificationTime: new Date().toISOString(),
-                          authorization: "Admin",
-                          simulationRequestParam: {
-                            param1: "[int]",
-                            param2: "[string]"
-                          },
-                          simulationResponseInfo: {
-                            param1: "[int]",
-                            param2: "[string]"
-                          },
-                          responseFormatType: "json",
-                          interfaceType: "custom",
-                          errorInfo: {
-                            error_info: {
-                              count: "0",
-                              errorCode: "0",
-                              description: "No errors"
-                            }
-                          },
-                          preliminaryField: null,
-                          simulationAccessURL: null
-                        }
-                      ];
-
-                      // API에서 가져온 데이터에 수동 항목 추가
-                      data = [...data, ...manualItems];
-
 						console.log(data, meta);
 						this._popupMenu.open({ data, meta, event }, 'bpmn-simulations', event, {
 							title: translate('Select simulation'),
@@ -300,6 +233,45 @@ PaletteProvider.prototype.getPaletteEntries = function() {
 				}
       }
 		},
+    // fedit 엔티티 타입 받아와서 추가
+    'create.fedit-entity': {
+      group: 'fedit-entity',
+      className: 'bpmn-icon-data-store',
+      title: translate('Create Fedit Entity Task'),
+      action: {
+        click: async (event) => {
+          console.log('Create Fedit Entity Task', event, this._popupMenu);
+
+          // API 요청
+          ApiService.query('/feditscraper/json').then((resp) => {
+
+            // 데이터 구조 매핑
+            var { data } = resp?.data || {};
+            data = data.map((item) => ({
+              id: item.id || 'unknown-id',
+              title: item.title || 'No Title',
+              description: item.description || 'No Description',
+              type: item.type || 'Unknown Type',
+              reference: item.reference || 'No Reference'
+            }));
+
+            console.log(data);
+
+            // 팝업 메뉴 열기
+            this._popupMenu.open({ data, event }, 'bpmn-fedit-entity', event, {
+              title: translate('Select Fedit Entity'),
+              width: 400,
+              search: true
+            });
+          }).catch((error) => {
+            console.error('API 요청 중 오류 발생:', error);
+          });
+        }
+      }
+    }
+
+
+
   });
 	console.log("actions", actions, new Error().stack);
 

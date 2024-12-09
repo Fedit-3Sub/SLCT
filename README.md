@@ -106,6 +106,11 @@ docker compose up --build -d
    kubectl apply -f ./k8s/ingress.yaml
   ```
 
+---
+
+# Acknowledgments
+
+This project uses [bpmn-js](https://github.com/bpmn-io/bpmn-js) and related tools, which are licensed under the [Apache 2.0 License](https://github.com/bpmn-io/bpmn-js/blob/develop/LICENSE).
 
 
 ---

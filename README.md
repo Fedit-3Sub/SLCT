@@ -5,6 +5,7 @@
 # 서비스 로직 생성 도구
 
 > **디지털 연합트윈 서비스 로직 생성 도구**는 bpmn 기반의 서비스 로직을 생성하는 작업을 지원하며, 시뮬레이션 해석을 위한 효율적인 로직 생성 도구를 제공합니다.
+![image](https://github.com/user-attachments/assets/df379267-1b34-46a5-af4f-be474ad0ffcd)
 
 
 ## 주요 기능
@@ -107,4 +108,8 @@ docker compose up --build -d
 
 
 
+---
 
+# Funding
+This work was supported by Institute of Information & communications Technology Planning & Evaluation (IITP) grant funded
+by the Korea government (MSIT) (No.2022-0-00431, Development of open service platform and creation technology of federated intelligent digital twin, 100%).

@@ -14,7 +14,7 @@
     "@vueuse/core": "^9.13.0",
     "array-move": "^4.0.0",
     "axios": "^1.7.2",
-    "bpmn-font": "^0.12.1",
+
     "bpmn-moddle": "^9.0.1",
     "classnames": "^2.5.1",
     "date-fns": "^3.6.0",
@@ -24,7 +24,7 @@
     "focus-trap": "^7.5.4",
     "ids": "^1.0.5",
     "inherits-browser": "^0.1.0",
-    "marked": "^13.0.2",
+
     "min-dash": "^4.2.1",
     "min-dom": "^5.1.1",
     "randomcolor": "^0.6.2",

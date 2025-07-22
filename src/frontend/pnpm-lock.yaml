@@ -31,7 +31,7 @@ importers:
         version: 0.12.1
       bpmn-moddle:
         specifier: ^9.0.1
-        version: 9.0.1
+        version: 9.0.2
       classnames:
         specifier: ^2.5.1
         version: 2.5.1
@@ -56,9 +56,6 @@ importers:
       inherits-browser:
         specifier: ^0.1.0
         version: 0.1.0
-      marked:
-        specifier: ^13.0.2
-        version: 13.0.2
       min-dash:
         specifier: ^4.2.1
         version: 4.2.1
@@ -1059,8 +1056,8 @@ packages:
   bpmn-font@0.12.1:
     resolution: {integrity: sha512-quQ47cFuFSZw3y5ta4J2eg+g/UG38pN9Uk8QzR988RyjFP7agdgwmVXPErCGqaFm4UyTTNGtx9jCFdcxw990vg==}
 
-  bpmn-moddle@9.0.1:
-    resolution: {integrity: sha512-jO2P5RBx0cZCCd+imqhpNE5anttaYuGd71u76NEA/qMZwJSW1t5ETAtw9/E2InfiPU2w0TR8oxPyopJXRc9VQg==}
+  bpmn-moddle@9.0.2:
+    resolution: {integrity: sha512-HXWMJ+UZSm2PeBS9FuY713AB6Pjwbzp6l2ncWdUpuPrQVGdtcsS/FIK5P3CVQKR8LYrf0BUaM+ID+0Xu7PdsIw==}
     engines: {node: '>= 18'}
 
   brace-expansion@1.1.11:
@@ -1933,11 +1930,6 @@ packages:
     resolution: {integrity: sha512-8vBuFF/I/+OSLRmdf2wwFCJCz+nSn0m6DPvGH1fS/KiQoSaR+sETbov0eIk9KhEKy8CYqIkIAnbohxT/4H0kuA==}
     engines: {node: '>=12'}
 
-  marked@13.0.2:
-    resolution: {integrity: sha512-J6CPjP8pS5sgrRqxVRvkCIkZ6MFdRIjDkwUwgJ9nL2fbmM6qGQeB2C16hi8Cc9BOzj6xXzy0jyi0iPIfnMHYzA==}
-    engines: {node: '>= 18'}
-    hasBin: true
-
   mdast-util-from-markdown@0.8.5:
     resolution: {integrity: sha512-2hkTXtYYnr+NubD/g6KGBS/0mFmBcifAsI0yIWRiRo0PjVs6SSOSOdtzbp6kSGnShDN6G5aWZpKQ2lWRy27mWQ==}
 
@@ -2013,8 +2005,8 @@ packages:
     peerDependencies:
       moddle: '>= 6.2.0'
 
-  moddle@7.0.0:
-    resolution: {integrity: sha512-Hpte2hfKDwoZWPvDngsEHjloPnO+sKMUVkAPc0r9PrpnVLqsyPUTV0ZQU8CAp87YmRZ9QzeQMJxdKbaP9vEIKA==}
+  moddle@7.2.0:
+    resolution: {integrity: sha512-x1+JREThy7JBOBR3g2hbOnOfrlC/YAWXX9RzrSZS5HhqeuBly9H/PCtOBtcQs+Y2sjRAXF+WTNSgHvn8Uq+6Yw==}
 
   ms@2.1.2:
     resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
@@ -3753,11 +3745,11 @@ snapshots:
 
   bpmn-font@0.12.1: {}
 
-  bpmn-moddle@9.0.1:
+  bpmn-moddle@9.0.2:
     dependencies:
       min-dash: 4.2.1
-      moddle: 7.0.0
-      moddle-xml: 11.0.0(moddle@7.0.0)
+      moddle: 7.2.0
+      moddle-xml: 11.0.0(moddle@7.2.0)
 
   brace-expansion@1.1.11:
     dependencies:
@@ -4681,8 +4673,6 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.4.15
 
-  marked@13.0.2: {}
-
   mdast-util-from-markdown@0.8.5:
     dependencies:
       '@types/mdast': 3.0.15
@@ -4757,13 +4747,13 @@ snapshots:
       pkg-types: 1.0.3
       ufo: 1.4.0
 
-  moddle-xml@11.0.0(moddle@7.0.0):
+  moddle-xml@11.0.0(moddle@7.2.0):
     dependencies:
       min-dash: 4.2.1
-      moddle: 7.0.0
+      moddle: 7.2.0
       saxen: 10.0.0
 
-  moddle@7.0.0:
+  moddle@7.2.0:
     dependencies:
       min-dash: 4.2.1
 

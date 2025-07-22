@@ -1,17 +1,12 @@
 pandas
-numpy
-scipy
-
-scikit-learn
-matplotlib
 requests
 
 tsai
+fasttransform
+
 flask
 flask_cors
 
-pandas_datareader
-seaborn
 datasets
 pyyaml
 tiktoken

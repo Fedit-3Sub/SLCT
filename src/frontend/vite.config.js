@@ -30,6 +30,8 @@ const config = defineConfig({
       resolvers: [
         IconsResolver({
           componentPrefix: '',
+          // Restrict to MDI to avoid mis-resolving normal components like <Label> to `la/bel`
+          enabledCollections: ['mdi'],
         }),
       ],
       dts: 'src/components.d.ts',

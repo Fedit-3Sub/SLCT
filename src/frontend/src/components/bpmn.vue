@@ -1,8 +1,20 @@
 <template>
-	<div class="h-full w-full flex">
-		<div ref="container" class="vue-bpmn-diagram-container"></div>
-		<div id="properties"></div>
-	</div>
+  <div class="h-full w-full flex">
+    <div ref="container" class="vue-bpmn-diagram-container"></div>
+    <div class="bpmn-sidebar">
+      <div class="bpmn-custom-box">
+        <div class="bpmn-custom-title">도구</div>
+        <div class="bpmn-custom-actions">
+          <button class="bpmn-btn" @click="onDownloadXml">XML 내보내기</button>
+          <label class="bpmn-upload-label">
+            <input ref="fileInput" type="file" accept=".bpmn,.xml" @change="onFileChange" class="hidden-input" />
+            XML 가져오기
+          </label>
+        </div>
+      </div>
+      <div id="properties"></div>
+    </div>
+  </div>
 </template>
 
 <script>
@@ -41,6 +53,7 @@ export default {
       diagramXML: null,
       process: null,
       processUrl: null,
+      importing: false,
     };
   },
   mounted: function () {
@@ -156,6 +169,15 @@ export default {
       }
 
       self.bpmn.get('canvas').zoom('fit-viewport');
+
+      // if XML was imported via our custom menu, persist it once
+      if (self.persistent && self.importing && self.diagram && self.diagram.id) {
+        ApiService.put(`/bpmns/${self.diagram.id}`, { data: { xml: self.diagramXML }})
+          .catch(function(e){ console.error(e); })
+          .finally(function(){ self.importing = false; });
+      } else {
+        self.importing = false;
+      }
     });
 
     ApiService.query(`/bpmns`, { params: { 'filters[uid][$eq]': this.id } }).then(resp => {
@@ -187,7 +209,7 @@ export default {
       ApiService.post(`/bpmns`, { data: { uid: this.id, xml }})
         .then(resp => { 
           console.log(resp);
-          self.diagram = resp.data?.data;
+          self.diagram = resp.data && resp.data.data;
           self.diagramXML = xml;
         }).catch(e => {
 					console.error(e);
@@ -211,6 +233,44 @@ export default {
   },
 	
   methods: {
+    onDownloadXml: async function() {
+      try {
+        const result = await this.bpmn.saveXML({ format: true });
+        const xml = result.xml;
+        const blob = new Blob([xml], { type: 'application/xml' });
+        const link = document.createElement('a');
+        var uid = this.diagram && this.diagram.attributes && this.diagram.attributes.uid;
+        var base = uid || (this.diagram && this.diagram.id) || this.id;
+        const filename = `${base}.bpmn`;
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+      } catch (e) {
+        console.error(e);
+        this.$emit('error', e);
+      }
+    },
+    onFileChange: function(e) {
+      const files = e.target.files || (e.dataTransfer && e.dataTransfer.files);
+      if (!files || !files.length) return;
+      const file = files[0];
+      const reader = new FileReader();
+      const self = this;
+      reader.onload = function(evt) {
+        const text = evt.target.result;
+        self.importing = true;
+        self.diagramXML = text;
+        if (self.$refs.fileInput) self.$refs.fileInput.value = '';
+      };
+      reader.onerror = function(err) {
+        console.error(err);
+        self.$emit('error', err);
+      };
+      reader.readAsText(file);
+    },
     fetchDiagram: function(url) {
       var self = this;
       fetch(url)
@@ -231,9 +291,52 @@ export default {
 <style>
   .vue-bpmn-diagram-container {
     height: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .bpmn-sidebar {
+    width: 300px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #e5e7eb;
+    background: #fafafa;
+  }
+  .bpmn-custom-box {
+    flex: 0 0 33%;
+    padding: 8px;
+    border-bottom: 1px solid #e5e7eb;
+    overflow: auto;
+  }
+  .bpmn-custom-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .bpmn-custom-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .bpmn-btn, .bpmn-upload-label {
+    display: inline-block;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: white;
+    color: #111827;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .bpmn-btn:hover, .bpmn-upload-label:hover {
+    background: #f3f4f6;
+  }
+  .hidden-input {
+    display: none;
+  }
+  #properties {
+    flex: 1 1 auto;
+    overflow: auto;
     width: 100%;
   }
-	#properties {
-		width: 300px;
-	}
 </style>

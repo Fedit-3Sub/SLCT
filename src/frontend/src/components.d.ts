@@ -8,8 +8,6 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     Bpmn: typeof import('./components/bpmn.vue')['default']
-    BPMN: typeof import('./components/BPMN.vue')['default']
-    BpmnModeler: typeof import('~icons/bpmn/modeler')['default']
     ButtonPrimary: typeof import('./components/shared/ButtonPrimary.vue')['default']
     ButtonSecondary: typeof import('./components/shared/ButtonSecondary.vue')['default']
     Feature: typeof import('./components/Feature.vue')['default']
@@ -17,11 +15,7 @@ declare module 'vue' {
     Heading1: typeof import('./components/shared/Heading1.vue')['default']
     Heading2: typeof import('./components/shared/Heading2.vue')['default']
     Hero: typeof import('./components/Hero.vue')['default']
-    MdiAlien: typeof import('~icons/mdi/alien')['default']
-    MdiArrowRight: typeof import('~icons/mdi/arrow-right')['default']
-    MdiGithub: typeof import('~icons/mdi/github')['default']
-    MdiMoonWaningCrescent: typeof import('~icons/mdi/moon-waning-crescent')['default']
-    MdiWhiteBalanceSunny: typeof import('~icons/mdi/white-balance-sunny')['default']
+    Label: typeof import('~icons/la/bel')['default']
     Navbar: typeof import('./components/Navbar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

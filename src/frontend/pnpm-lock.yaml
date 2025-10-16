@@ -26,9 +26,6 @@ importers:
       axios:
         specifier: ^1.7.2
         version: 1.7.2
-      bpmn-font:
-        specifier: ^0.12.1
-        version: 0.12.1
       bpmn-moddle:
         specifier: ^9.0.1
         version: 9.0.2
@@ -1052,9 +1049,6 @@ packages:
 
   boolbase@1.0.0:
     resolution: {integrity: sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww==}
-
-  bpmn-font@0.12.1:
-    resolution: {integrity: sha512-quQ47cFuFSZw3y5ta4J2eg+g/UG38pN9Uk8QzR988RyjFP7agdgwmVXPErCGqaFm4UyTTNGtx9jCFdcxw990vg==}
 
   bpmn-moddle@9.0.2:
     resolution: {integrity: sha512-HXWMJ+UZSm2PeBS9FuY713AB6Pjwbzp6l2ncWdUpuPrQVGdtcsS/FIK5P3CVQKR8LYrf0BUaM+ID+0Xu7PdsIw==}
@@ -3742,8 +3736,6 @@ snapshots:
   binary-extensions@2.2.0: {}
 
   boolbase@1.0.0: {}
-
-  bpmn-font@0.12.1: {}
 
   bpmn-moddle@9.0.2:
     dependencies:

@@ -74,7 +74,15 @@ export function getError(element) {
 export function getEventDefinition(element, eventType) {
   const businessObject = getBusinessObject(element);
 
-  const eventDefinitions = businessObject.get('eventDefinitions') || [];
+  // safe getter: some businessObjects are moddle elements with .get(),
+  // other times plain object may be provided. Handle both.
+  function safeGet(obj, prop) {
+    if (!obj) return undefined;
+    if (typeof obj.get === 'function') return obj.get(prop);
+    return obj[prop];
+  }
+
+  const eventDefinitions = safeGet(businessObject, 'eventDefinitions') || [];
 
   return find(eventDefinitions, function(definition) {
     return is(definition, eventType);

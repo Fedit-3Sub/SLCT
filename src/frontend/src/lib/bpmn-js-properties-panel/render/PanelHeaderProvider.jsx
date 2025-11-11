@@ -94,7 +94,8 @@ export const PanelHeaderProvider = (translate) => {
 
       const { iconProperty = 'zeebe:modelerTemplateIcon' } = config || {};
 
-      const templateIcon = getBusinessObject(element).get(iconProperty);
+  const bo = getBusinessObject(element);
+  const templateIcon = bo && (typeof bo.get === 'function' ? bo.get(iconProperty) : bo[iconProperty]);
 
       if (templateIcon) {
         return () => <img class="bio-properties-panel-header-template-icon" width="32" height="32" src={ templateIcon } />;

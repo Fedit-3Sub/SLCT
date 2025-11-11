@@ -1,19 +1,28 @@
-FROM node:18-alpine
-RUN apk update && apk add --no-cache build-base gcc autoconf automake zlib-dev libpng-dev nasm bash vips-dev git
-ARG NODE_ENV=development
-ENV NODE_ENV=${NODE_ENV}
+FROM python:3.11-slim
 
-WORKDIR /opt/
-COPY package.json package-lock.json ./
-RUN npm install -g node-gyp
-RUN npm config set fetch-retry-maxtimeout 600000 -g && npm install
-ENV PATH /opt/node_modules/.bin:$PATH
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /opt/app
+
+# Install dependencies
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir gunicorn
+
+# Copy project
 COPY . .
-COPY .env .env
-#RUN chown -R node:node /opt/app
-#USER node
-RUN ["npm", "run", "build"]
+
+# Default envs (can be overridden)
+ENV DJANGO_SETTINGS_MODULE=core.settings \
+    DJANGO_ALLOWED_HOSTS=* \
+    DJANGO_DEBUG=0 \
+    DJANGO_DB_PATH=/opt/app/data/db.sqlite3
+
+# Ensure data dir exists (for sqlite default path)
+RUN mkdir -p /opt/app/data
+
 EXPOSE 1337
-CMD ["npm", "run", "develop"]
+
+# Run migrations then start Gunicorn
+CMD sh -c "python manage.py migrate && gunicorn --workers 3 --bind 0.0.0.0:1337 core.wsgi:application"

@@ -9,7 +9,11 @@ import svgr from 'vite-plugin-svgr';
 import react from '@vitejs/plugin-react'
 import svgLoader from 'vite-svg-loader'
 
-process.env = {...process.env, ...loadEnv('development', process.cwd())};
+process.env = { ...process.env, ...loadEnv('development', process.cwd()) };
+
+// 개발 환경에서 백엔드 프록시 기본값을 안전하게 지정합니다.
+// VITE_PROXY_URL 미설정 시 Django 백엔드 기본 포트(1337)로 프록시합니다.
+const backendTarget = process.env.VITE_PROXY_URL || 'http://localhost:1337';
 
 const config = defineConfig({
   resolve: {
@@ -51,7 +55,7 @@ const config = defineConfig({
     port: 9900,
     proxy: {
       '/': {
-        target: process.env.VITE_PROXY_URL,
+        target: backendTarget,
         changeOrigin: true,
         rewrite: (path) => path,
         secure: false,

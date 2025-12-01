@@ -48,7 +48,7 @@
           <button
             class="bpmn-quick-btn"
             @click="openUnifiedSearch()"
-            title="통합 검색(Spotlight) 열기 (Ctrl/Cmd+F)"
+            title="통합 검색(Spotlight) 열기 (Ctrl/Cmd+F 또는 K)"
           >
             <span class="bpmn-quick-btn__icon">🔎</span>
             <span class="bpmn-quick-btn__label">검색</span>
@@ -319,6 +319,10 @@ export default {
       process: null,
       processUrl: null,
       importing: false,
+      // autosave controls
+      saveTimer: null,
+      saveDebounceMs: 800,
+      saving: false,
       copilotPrompt: "",
       copilotMessages: [],
       aiBusy: false,
@@ -374,19 +378,11 @@ export default {
     const PipelineModule = {
       __init__: [
         [ 'eventBus', 'bpmnjs', 'toggleMode', function(eventBus, bpmnjs, toggleMode) {
-          if(self.persistent) {
+          if (self.persistent) {
             eventBus.on('commandStack.changed', function() {
-              setTimeout(() => {
-                bpmnjs.saveXML().then(result => {
-                  console.log("xml", result);
-
-                  ApiService.put(`/bpmns/${self.diagram?.id}`, { data: { xml: result.xml }})
-                    .then(resp => {
-                      console.log(resp);
-                    })
-                })
-              }, 500);
-            })
+              // queue debounced save to backend
+              self.queueSave();
+            });
           }
           eventBus.on('diagram.init', 500, () => {
             //toggleMode.toggleMode(true);
@@ -594,29 +590,105 @@ export default {
   },
 
   methods: {
+    // Resolve diagram id by uid if missing
+    async ensureDiagramId() {
+      if (this?.diagram && this.diagram.id) return this.diagram.id;
+      try {
+        const resp = await ApiService.query(`/bpmns`, { params: { 'filters[uid][$eq]': this.id } });
+        const items = (resp && resp.data && resp.data.data) || [];
+        if (items[0] && items[0].id) {
+          this.diagram = items[0];
+          return items[0].id;
+        }
+      } catch (e) {
+        console.warn('ensureDiagramId: lookup failed', e);
+      }
+      // If not found, create it with current XML (or blank template)
+      try {
+        const xmlToSave = this.diagramXML || (await this.bpmn.saveXML()).xml;
+        const resp = await ApiService.post(`/bpmns`, { data: { uid: this.id, xml: xmlToSave } });
+        if (resp && resp.data && resp.data.data && resp.data.data.id) {
+          this.diagram = resp.data.data;
+          return this.diagram.id;
+        }
+      } catch (e) {
+        console.warn('ensureDiagramId: create failed', e);
+      }
+      return null;
+    },
+
+    // Debounced save trigger
+    queueSave() {
+      if (!this.persistent) return;
+      if (this.importing) return; // skip while importing XML
+      if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.saveTimer = setTimeout(() => {
+        this.saveTimer = null;
+        this.saveDiagram();
+      }, this.saveDebounceMs);
+    },
+
+    async saveDiagram() {
+      try {
+        if (this.importing) return;
+        this.saving = true;
+        const { xml } = await this.bpmn.saveXML();
+        // make sure we have a numeric id
+        const id = await this.ensureDiagramId();
+        if (!id) {
+          console.warn('saveDiagram: cannot resolve diagram id');
+          return;
+        }
+        await ApiService.put(`/bpmns/${id}`, { data: { xml } });
+      } catch (e) {
+        console.warn('saveDiagram: failed to save', e);
+      } finally {
+        this.saving = false;
+      }
+    },
     openUnifiedSearch() {
       try {
+        // prefer direct searchPad access, fallback to editorActions
+        const searchPad = this.bpmn && this.bpmn.get && this.bpmn.get('searchPad', false);
         const editorActions = this.bpmn && this.bpmn.get && this.bpmn.get('editorActions');
-        if (editorActions && editorActions.trigger) {
+
+        if (searchPad && typeof searchPad.toggle === 'function') {
+          searchPad.toggle();
+        } else if (editorActions && typeof editorActions.trigger === 'function') {
           editorActions.trigger('find');
         }
-        setTimeout(() => {
+
+        const focusInput = () => {
           const canvas = this.bpmn && this.bpmn.get && this.bpmn.get('canvas');
           const container = canvas && canvas.getContainer && canvas.getContainer();
           let input = null;
           if (container && container.querySelector) {
-            input = container.querySelector('.djs-popup-search input, .djs-search-input input');
+            // support both popup-menu search and search-pad input
+            input = container.querySelector('.djs-popup-search input, .djs-search-input input, .djs-search-input');
           }
           if (!input) {
-            input = document.querySelector('.djs-popup-search input, .djs-search-input input');
+            input = document.querySelector('.djs-popup-search input, .djs-search-input input, .djs-search-input');
           }
           if (input) {
             input.focus();
             if (typeof input.select === 'function') {
               input.select();
             }
+            return true;
           }
-        }, 0);
+          return false;
+        };
+
+        // try immediately, then retry shortly after to catch async render
+        if (!focusInput()) {
+          setTimeout(() => {
+            if (!focusInput()) {
+              setTimeout(() => {
+                focusInput();
+              }, 150);
+            }
+          }, 50);
+        }
       } catch (e) {
         console.error('Failed to open search', e);
       }

@@ -43,7 +43,7 @@
             title="현재 다이어그램을 XML로 내려받습니다"
           >
             <span class="bpmn-quick-btn__icon">⬇</span>
-            <span class="bpmn-quick-btn__label">XML 저장</span>
+            <span class="bpmn-quick-btn__label">XML 내보내기</span>
           </button>
           <button
             class="bpmn-quick-btn"

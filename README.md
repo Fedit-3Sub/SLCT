@@ -1,148 +1,120 @@
-# KT-BPMN
+# SLCT
+4)서비스 로직 생성엔진 기술 개발
 
-## docker compose
+---------------------------------------
+# 서비스 로직 생성 도구
 
-### 설치
-
-docker compose
-
-### 실행
-```
-docker compose up --build -d
-```
-
-## kubernates
-
-### 설치
-microk8s
-
-```
-sudo snap install microk8s --classic
-microk8s status --wait-ready
-microk8s enable dashboard
-microk8s enable registry
-microk8s enable ingress
-microk8s kubectl get all --all-namespaces
-microk8s dashboard-proxy
-
-rm -rf ~/.kube
-mkdir ~/.kube
-cd ~/.kube
-microk8s config > config
-microk8s.inspect
-```
-
-enable low range node ports
-```
-vi /var/snap/microk8s/current/args/kube-apiserver
-...
---service-node-port-range=9900-9910
-
-microk8s stop
-microk8s start
-```
-
-build docker images
-```
-docker build -t localhost:32000/bpmn-backend:latest -f ./backend/Dockerfile ./backend
-docker build -t localhost:32000/bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
-docker build -t localhost:32000/bpmn-processor:latest -f ./processor/Dockerfile ./processor
-
-/etc/docker/daemon.json
-{
-  "insecure-registries" : ["localhost:32000"]
-}
-sudo systemctl restart docker
-
-docker push localhost:32000/bpmn-frontend:latest
-docker push localhost:32000/bpmn-backend:latest
-docker push localhost:32000/bpmn-processor:latest
-
-or
-docker images
-docker tag 2f53f744fa21 localhost:32000/bpmn-frontend:latest
-
-```
-
-이미지 수정 재배포
-
-```
-kubectl rollout restart deployment bpmn-frontend-deployment -n kt-bpmn
-kubectl rollout restart deployment bpmn-backend-deployment -n kt-bpmn
-```
+> **디지털 연합트윈 서비스 로직 생성 도구**는 bpmn 기반의 서비스 로직을 생성하는 작업을 지원하며, 시뮬레이션 해석을 위한 효율적인 로직 생성 도구를 제공합니다.
+![image](https://github.com/user-attachments/assets/df379267-1b34-46a5-af4f-be474ad0ffcd)
 
 
+## 주요 기능
+- **BPMN 다이어그램 편집**: 노드 추가, 삭제, 연결을 지원하며 XML 형식으로 저장/불러오기 가능.
+- **로직 시뮬레이션**: 실행 흐름 테스트 및 결과 로그 확인.
+- **API 연동**: 디지털 트윈 메타데이터를 활용한 동적 로직 생성.
+- **배포 지원**: Docker 및 Kubernetes를 통한 확장성과 안정성 확보.
 
-### 실행
-kubectl deployment & service
-```
-kubectl create namespace kt-bpmn
-kubectl config set-context --current --namespace=kt-bpmn
-kubectl config view --minify | grep namespace
-kubectl apply -f ./k8s/backend.yaml
-kubectl apply -f ./k8s/frontend.yaml
-kubectl apply -f ./k8s/processor.yaml
-kubectl apply -f ./k8s/ingress.yaml
-```
+---
 
-port forwarding (minikube)
-```
-nohup kubectl -n kt-bpmn port-forward service/bpmn-frontend-service --address=0.0.0.0 9900:9900 &
-nohup kubectl -n kt-bpmn port-forward service/bpmn-processor-service --address=0.0.0.0 9901:9901 &
-kubectl -n kt-bpmn port-forward service/bpmn-backend-service --address=0.0.0.0 1337:1337
+## 📋 사용 예제
 
-kubectl exec -it bpmn-backend-deployment-bf68b48bf-sgcx8 -- sh
-```
+### BPMN 로직 생성 및 시뮬레이션
+- 프론트엔드에서 BPMN 다이어그램을 생성.
+- 노드 간 연결 설정 후 저장.
+- 로직 시뮬레이션 실행 및 로그 확인.
 
-## local development
+---
 
-### 설치
+## 🛠️ 프로젝트 구조
+- **frontend**: BPMN 다이어그램 기반의 프론트엔드 UI.
+- **backend**: Strapi를 활용한 데이터 관리 및 API 서버.
+- **processor**: Python 기반의 데이터 처리 모듈.
+- **k8s**: Kubernetes 배포를 위한 YAML 설정 파일.
 
-nodejs
-```
+---
+
+## 🛠️ 개발 환경
+
+### 의존성 설치
+**Node.js 설치**:
+```bash
 curl -fsSL https://fnm.vercel.app/install | bash
 fnm use --install-if-missing 20
 corepack enable
 ```
 
-python
-```
+**파이썬 패키지 설치**
+```bash
 pip3 install -r ./processor/requirements.txt
 ```
 
-### 실행
-
-```
-cd frontend
-pnpm i && pnpm dev
-```
-
-```
+### 개발 환경 실행
+- **백엔드 실행**
+```bash
 cd backend
-* edit .env
-npm i && npm run develop
+npm install
+npm run develop
 ```
 
-```
-cd processor
-python3 main.py
-```
-
-## 설정
-
-ssl port forward 1337, 9000
-
-strapi admin
-http://localhost:1337
-
-```
-email: admin@keti.re.kr
-password: ketiKeti!@34
+- **프론트엔드 실행**:
+ ```bash
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-## 사용
+---
 
-http://localhost:9900/[다이어그램id]
+## 🛠️ 배포
+- **Docker Compose를 활용한 배포**
+```bash
+docker compose up --build -d
+```
+
+- **Kubernetes를 활용한 배포**:
+1. microK8S 설치
+  ```bash
+  sudo snap install microk8s --classic
+  microk8s enable dashboard registry ingress
+  ```
+
+2. Docker image 빌드 및 푸쉬
+  ```bash
+    docker build -t localhost:32000/bpmn-backend:latest -f ./backend/Dockerfile ./backend
+    docker build -t localhost:32000/bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
+    docker build -t localhost:32000/bpmn-processor:latest -f ./processor/Dockerfile ./processor
+    
+    /etc/docker/daemon.json
+    {
+    "insecure-registries" : ["localhost:32000"]
+    }
+    sudo systemctl restart docker
+    
+    docker push localhost:32000/bpmn-frontend:latest
+    docker push localhost:32000/bpmn-backend:latest
+    docker push localhost:32000/bpmn-processor:latest
+  ```
+
+3. 빌드 이미지 배포
+  ```bash
+   kubectl create namespace kt-bpmn
+   kubectl config set-context --current --namespace=kt-bpmn
+   kubectl config view --minify | grep namespace
+   kubectl apply -f ./k8s/backend.yaml
+   kubectl apply -f ./k8s/frontend.yaml
+   kubectl apply -f ./k8s/processor.yaml
+   kubectl apply -f ./k8s/ingress.yaml
+  ```
+
+---
+
+# Acknowledgments
+
+This project uses [bpmn-js](https://github.com/bpmn-io/bpmn-js) and related tools, which are licensed under the [Apache 2.0 License](https://github.com/bpmn-io/bpmn-js/blob/develop/LICENSE).
 
 
-npm run strapi admin:reset-user-password --email=admin@keti.re.kr --password=ketiKeti!@34
+---
+
+# Funding
+This work was supported by Institute of Information & communications Technology Planning & Evaluation (IITP) grant funded
+by the Korea government (MSIT) (No.2022-0-00431, Development of open service platform and creation technology of federated intelligent digital twin, 100%).

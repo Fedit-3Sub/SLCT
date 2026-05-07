@@ -1,0 +1,12 @@
+pandas
+requests
+
+tsai
+fasttransform
+
+flask
+flask_cors
+
+datasets
+pyyaml
+tiktoken

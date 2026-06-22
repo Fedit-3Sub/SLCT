@@ -3,3 +3,6 @@ django-cors-headers==4.3.1
 requests==2.32.3
 djangorestframework==3.15.1
 drf-yasg==1.21.7
+# drf-yasg 가 import 하는 pkg_resources 는 setuptools 81 부터 제거됨.
+# Python 3.12+ 에서 venv 새로 만들 때 깨지므로 호환 버전으로 고정.
+setuptools<81

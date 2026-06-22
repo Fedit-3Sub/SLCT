@@ -1,139 +1,103 @@
 # 서비스 로직 생성도구(SLCT)
 
-## docker compose
+프론트엔드(Vue, `9900`) · 백엔드(Django, `1337`) · 프로세서(Flask, `9901`) 3-tier 구성입니다.
+개요와 빠른 시작은 루트 [README.md](../README.md), 백엔드 API 상세는 [backend/README.md](backend/README.md)를 참고하세요.
 
-### 설치
+## Docker Compose
 
-docker compose
+각 서비스는 `.env`를 읽습니다. 최초 1회 샘플을 복사한 뒤 실행하세요.
 
-### 실행
-```
+```bash
+cp backend/.env.example  backend/.env
+cp frontend/.env-sample  frontend/.env
+cp processor/.env-sample processor/.env
+
 docker compose up --build -d
 ```
 
-## kubernates
+## Kubernetes (microk8s)
 
 ### 설치
-microk8s
 
-```
+```bash
 sudo snap install microk8s --classic
 microk8s status --wait-ready
-microk8s enable dashboard
-microk8s enable registry
-microk8s enable ingress
+microk8s enable dashboard registry ingress
 microk8s kubectl get all --all-namespaces
-microk8s dashboard-proxy
 
-rm -rf ~/.kube
-mkdir ~/.kube
-cd ~/.kube
-microk8s config > config
-microk8s.inspect
+mkdir -p ~/.kube && microk8s config > ~/.kube/config
 ```
 
-enable low range node ports
-```
-vi /var/snap/microk8s/current/args/kube-apiserver
-...
+낮은 대역 NodePort(9900~9910)를 허용하려면:
+
+```bash
+# /var/snap/microk8s/current/args/kube-apiserver 에 추가
 --service-node-port-range=9900-9910
 
-microk8s stop
-microk8s start
+microk8s stop && microk8s start
 ```
 
-build docker images
-```
-docker build -t localhost:32000/bpmn-backend:latest -f ./backend/Dockerfile ./backend
-docker build -t localhost:32000/bpmn-frontend:latest -f ./frontend/Dockerfile ./frontend
+### 이미지 빌드 & 푸시
+
+```bash
+docker build -t localhost:32000/bpmn-backend:latest   -f ./backend/Dockerfile   ./backend
+docker build -t localhost:32000/bpmn-frontend:latest  -f ./frontend/Dockerfile  ./frontend
 docker build -t localhost:32000/bpmn-processor:latest -f ./processor/Dockerfile ./processor
 
-/etc/docker/daemon.json
-{
-  "insecure-registries" : ["localhost:32000"]
-}
-sudo systemctl restart docker
+# 로컬 레지스트리 사용 시 /etc/docker/daemon.json 에
+#   { "insecure-registries": ["localhost:32000"] }
+# 추가 후 `sudo systemctl restart docker`
 
-docker push localhost:32000/bpmn-frontend:latest
 docker push localhost:32000/bpmn-backend:latest
+docker push localhost:32000/bpmn-frontend:latest
 docker push localhost:32000/bpmn-processor:latest
-
-or
-docker images
-docker tag 2f53f744fa21 localhost:32000/bpmn-frontend:latest
-
 ```
 
-### 실행
-kubectl deployment & service
-```
+### 배포
+
+```bash
 kubectl create namespace kt-bpmn
 kubectl config set-context --current --namespace=kt-bpmn
-kubectl config view --minify | grep namespace
 kubectl apply -f ./k8s/backend.yaml
 kubectl apply -f ./k8s/frontend.yaml
 kubectl apply -f ./k8s/processor.yaml
 kubectl apply -f ./k8s/ingress.yaml
 ```
 
-port forwarding (minikube)
-```
-nohup kubectl -n kt-bpmn port-forward service/bpmn-frontend-service --address=0.0.0.0 9900:9900 &
+포트 포워딩:
+
+```bash
+nohup kubectl -n kt-bpmn port-forward service/bpmn-frontend-service  --address=0.0.0.0 9900:9900 &
 nohup kubectl -n kt-bpmn port-forward service/bpmn-processor-service --address=0.0.0.0 9901:9901 &
 kubectl -n kt-bpmn port-forward service/bpmn-backend-service --address=0.0.0.0 1337:1337
-
-kubectl exec -it bpmn-backend-deployment-bf68b48bf-sgcx8 -- sh
 ```
 
-## local development
+## 로컬 개발
 
-### 설치
-
-nodejs
-```
-curl -fsSL https://fnm.vercel.app/install | bash
-fnm use --install-if-missing 20
-corepack enable
-```
-
-python
-```
-pip3 install -r ./processor/requirements.txt
-```
-
-### 실행
-
-```
+### 프론트엔드 (Node 18+, pnpm)
+```bash
 cd frontend
-pnpm i && pnpm dev
+pnpm install && pnpm dev
 ```
 
-```
+### 백엔드 (Python, Django)
+```bash
 cd backend
-* edit .env
-npm i && npm run develop
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver        # 0.0.0.0:1337
 ```
 
-```
+### 프로세서 (Python, Flask)
+```bash
 cd processor
-python3 main.py
-```
-
-## 설정
-
-ssl port forward 1337, 9000
-
-strapi admin
-http://localhost:1337
-
-```
-email: admin@keti.re.kr
-password: ketiKeti!@34
+pip install -r requirements.txt
+python3 main.py                   # 0.0.0.0:9901
 ```
 
 ## 사용
 
-http://localhost:9900/[다이어그램id]
-
-
-npm run strapi admin:reset-user-password --email=admin@keti.re.kr --password=ketiKeti!@34
+```
+http://localhost:9900/<다이어그램id>
+```

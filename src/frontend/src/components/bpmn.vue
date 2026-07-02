@@ -276,6 +276,7 @@ import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
 import ApiService from "@/common/api.service";
 import parse from 'url-parse';
+import { layoutProcess } from 'bpmn-auto-layout';
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || 'alpha';
 const DEFAULT_DIAGRAM_XML = `
@@ -1317,6 +1318,27 @@ export default {
       this.copilotMessages.push(this.createCopilotMessage('assistant', '제안된 BPMN XML을 적용하지 않았습니다.'));
       this.scrollCopilotToBottom();
     },
+    hasDiagramInterchange(xml) {
+      // BPMNDI(BPMNDiagram/BPMNPlane) 존재 여부 — 좌표 정보가 있는지 판단
+      return typeof xml === 'string' && /bpmndi:bpmndiagram|<bpmndi:bpmnplane|:bpmnplane/i.test(xml);
+    },
+    isNoDiagramError(err) {
+      const msg = (err && (err.message || err.warning || String(err))) || '';
+      return /no diagram to display|no bpmndi|no process or collaboration/i.test(msg);
+    },
+    async ensureLayoutedXml(xml) {
+      // 좌표(BPMNDI)가 없으면 자동 레이아웃으로 좌표를 생성해 배치 가능한 XML로 변환.
+      if (!xml || this.hasDiagramInterchange(xml)) {
+        return xml;
+      }
+      try {
+        const layouted = await layoutProcess(xml);
+        return layouted || xml;
+      } catch (e) {
+        console.error('자동 레이아웃 실패', e);
+        return xml;
+      }
+    },
     setDiagramXml(xml, message, options = {}) {
       const self = this;
       const {
@@ -1325,43 +1347,67 @@ export default {
         onFailure = null,
       } = options;
 
-      // bpmn.importXML is promise-based in our bundled bpmn-js. Do not pass a callback.
-      this.bpmn.importXML(xml)
-        .then(() => {
-          // prevent triggering the watcher re-import since we already imported
-          self.skipDiagramImport = true;
-          self.diagramXML = xml;
-          self.skipDiagramImport = false;
-
-          if (typeof onSuccess === 'function') {
-            onSuccess();
+      const restorePrevious = () => {
+        if (!previousXml) return;
+        self.skipDiagramImport = true;
+        self.diagramXML = previousXml;
+        self.skipDiagramImport = false;
+        self.bpmn.importXML(previousXml).catch((recoverErr) => {
+          if (recoverErr) {
+            console.error('Failed to restore previous BPMN XML', recoverErr);
           }
-          if (message) {
-            self.copilotMessages.push(self.createCopilotMessage('assistant', message));
-          }
-          self.scrollCopilotToBottom();
-        })
-        .catch((err) => {
-          console.error('BPMN XML import failed', err);
-          if (typeof onFailure === 'function') {
-            onFailure(err);
-          }
-
-          // try to restore previous XML if provided
-          if (previousXml) {
-            self.skipDiagramImport = true;
-            self.diagramXML = previousXml;
-            self.skipDiagramImport = false;
-            self.bpmn.importXML(previousXml).catch((recoverErr) => {
-              if (recoverErr) {
-                console.error('Failed to restore previous BPMN XML', recoverErr);
-              }
-            });
-          }
-
-          self.copilotMessages.push(self.createCopilotMessage('assistant', 'BPMN XML을 적용하지 못했습니다. XML 형식을 확인하세요.'));
-          self.scrollCopilotToBottom();
         });
+      };
+
+      const finishSuccess = (appliedXml) => {
+        // 이미 import 했으므로 watcher 의 재-import 를 막는다.
+        // watcher 는 비동기로 실행되므로 플래그 해제도 nextTick 으로 미뤄야
+        // 재-import 가 실제로 스킵되고, 아래 fit-viewport 가 덮어써지지 않는다.
+        self.skipDiagramImport = true;
+        self.diagramXML = appliedXml;
+        self.$nextTick(() => { self.skipDiagramImport = false; });
+        // 새로 배치된 다이어그램이 화면에 보이도록 뷰를 맞춘다.
+        try {
+          self.bpmn.get('canvas').zoom('fit-viewport');
+        } catch (e) {
+          console.warn('fit-viewport 실패', e);
+        }
+        if (typeof onSuccess === 'function') {
+          onSuccess();
+        }
+        if (message) {
+          self.copilotMessages.push(self.createCopilotMessage('assistant', message));
+        }
+        self.scrollCopilotToBottom();
+      };
+
+      const finishFailure = (err) => {
+        console.error('BPMN XML import failed', err);
+        if (typeof onFailure === 'function') {
+          onFailure(err);
+        }
+        restorePrevious();
+        self.copilotMessages.push(self.createCopilotMessage('assistant', 'BPMN XML을 적용하지 못했습니다. XML 형식을 확인하세요.'));
+        self.scrollCopilotToBottom();
+      };
+
+      // 좌표가 없으면 먼저 자동 레이아웃 → import. 실패 시 자동 레이아웃 재시도.
+      // bpmn.importXML is promise-based in our bundled bpmn-js. Do not pass a callback.
+      this.ensureLayoutedXml(xml)
+        .then((preparedXml) => {
+          return self.bpmn.importXML(preparedXml)
+            .then(() => finishSuccess(preparedXml))
+            .catch((err) => {
+              // DI 부재로 인한 실패면 자동 레이아웃 후 1회 재시도
+              if (self.isNoDiagramError(err) && preparedXml === xml) {
+                return layoutProcess(xml)
+                  .then((layouted) => self.bpmn.importXML(layouted).then(() => finishSuccess(layouted)))
+                  .catch((retryErr) => finishFailure(retryErr));
+              }
+              return finishFailure(err);
+            });
+        })
+        .catch((err) => finishFailure(err));
     },
     onFileChange: function(e) {
       const files = e.target.files || (e.dataTransfer && e.dataTransfer.files);

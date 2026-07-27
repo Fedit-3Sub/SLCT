@@ -150,7 +150,7 @@ kubectl apply -f ./k8s/ingress.yaml
 
 ## Acknowledgments
 
-This project uses [bpmn-js](https://github.com/bpmn-io/bpmn-js) and related tools, which are licensed under the [Apache 2.0 License](https://github.com/bpmn-io/bpmn-js/blob/develop/LICENSE).
+This project uses [bpmn-js](https://github.com/bpmn-io/bpmn-js) and related tools from [bpmn.io](https://bpmn.io/).
 
 ---
 

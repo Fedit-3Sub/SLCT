@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "postinstall": "husky install",
+    "postinstall": "husky install || true",
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "lint": "eslint --ext .vue,.ts,.js",

@@ -1,3 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bpmn-processor-pvc
+spec:
+  storageClassName: microk8s-hostpath
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,6 +27,16 @@ spec:
       containers:
         - name: bpmn-processor
           image: localhost:32000/bpmn-processor:latest
+          ports:
+            - containerPort: 9901
+          volumeMounts:
+            # 파이프라인 처리 결과 저장 경로(docker compose 의 ./data 마운트와 동일한 역할)
+            - name: bpmn-processor-storage
+              mountPath: /app/data
+      volumes:
+        - name: bpmn-processor-storage
+          persistentVolumeClaim:
+            claimName: bpmn-processor-pvc
 
 ---
 apiVersion: v1

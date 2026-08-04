@@ -15,6 +15,13 @@ spec:
       containers:
         - name: bpmn-frontend
           image: localhost:32000/bpmn-frontend:latest
+          ports:
+            - containerPort: 9900
+          env:
+            # 클러스터 내부에서는 백엔드 서비스 이름으로 접근한다.
+            # (이미지에 포함된 .env 의 host.docker.internal 주소는 쿠버네티스에서 동작하지 않음)
+            - name: VITE_PROXY_URL
+              value: http://bpmn-backend-service:1337
 
 ---
 apiVersion: v1

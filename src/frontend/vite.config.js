@@ -9,7 +9,9 @@ import svgr from 'vite-plugin-svgr';
 import react from '@vitejs/plugin-react'
 import svgLoader from 'vite-svg-loader'
 
-process.env = { ...process.env, ...loadEnv('development', process.cwd()) };
+// .env 파일 값을 먼저 깔고, 실제 프로세스 환경변수로 덮어쓴다.
+// (컨테이너/쿠버네티스 배포에서 주입한 VITE_PROXY_URL 이 이미지에 포함된 .env 보다 우선해야 함)
+process.env = { ...loadEnv('development', process.cwd()), ...process.env };
 
 // 개발 환경에서 백엔드 프록시 기본값을 안전하게 지정합니다.
 // VITE_PROXY_URL 미설정 시 Django 백엔드 기본 포트(1337)로 프록시합니다.

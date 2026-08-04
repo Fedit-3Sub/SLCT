@@ -16,6 +16,48 @@ python manage.py runserver
 - 기본 DB는 `src/backend/db.sqlite3` (환경변수 `DJANGO_DB_PATH`로 경로 변경 가능)  
 - 기본 포트는 `1337`이며 `python manage.py runserver 0.0.0.0:<port>`로 조정할 수 있습니다. 별도 인자를 주지 않으면 `0.0.0.0:1337`에서 시작합니다.
 
+#### AI 코파일럿 생성 엔진
+
+`/api/llm/copilot` 은 아래 순서로 생성 엔진을 시도하며, 앞 단계를 쓸 수 없으면 다음으로 넘어갑니다.
+
+| 순위 | 엔진 | 조건 | 특징 |
+|---|---|---|---|
+| 1 | 외부 LLM 서버 (Ollama 등) | 설정이 있고 연결되는 경우 | provider 별 호출은 추후 연결 |
+| 2 | 내장 CPU LLM (llama.cpp) | 런타임 + 모델 파일이 있는 경우 | GPU 불필요, 응답 15~30초 |
+| 3 | 규칙 기반 생성기 | 항상 | 의존성 없음, 즉시 응답 |
+
+어느 경로를 타든 결과는 공통 빌더를 거치므로 **항상 유효한 BPMN XML** 이 반환됩니다.
+좌표(BPMNDI)는 생성하지 않으며 프런트엔드가 자동 레이아웃으로 배치합니다.
+
+**내장 CPU LLM 사용 (선택)**
+
+설치하지 않아도 백엔드는 정상 동작하며, 이 경우 규칙 기반 생성기가 응답합니다.
+
+```bash
+# 1) 런타임 설치 (CPU 전용 사전 빌드 휠 — 컴파일 불필요)
+pip install -r requirements-local-llm.txt \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+# 2) 모델 내려받기 (약 1.1GB, Apache-2.0)
+mkdir -p models
+curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+```
+
+모델 파일은 저장소에 포함하지 않습니다(`.gitignore` 처리).
+`models/` 아래 `.gguf` 파일이 있으면 자동으로 인식합니다.
+
+관련 환경변수:
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `LOCAL_LLM_ENABLED` | `1` | `0` 이면 내장 LLM 을 건너뛰고 규칙 기반만 사용 |
+| `LOCAL_LLM_MODEL_PATH` | (자동 탐색) | 특정 GGUF 파일 경로 지정 |
+| `LOCAL_LLM_MODEL_DIR` | `src/backend/models` | 모델 탐색 디렉터리 |
+| `LOCAL_LLM_THREADS` | 물리 코어 수 | 논리 코어 수만큼 늘리면 오히려 느려집니다 |
+| `LOCAL_LLM_CTX` | `2048` | 컨텍스트 길이 |
+| `LOCAL_LLM_MAX_TOKENS` | `768` | 최대 생성 토큰 |
+
 #### 엔드포인트 요약
 
 응답은 모두 `{"data": ..., "meta": ...}` 형식을 유지하여 프런트엔드가 기존 axios 래퍼(ApiService)로 문제 없이 소비할 수 있습니다.

@@ -33,3 +33,8 @@ dist/
 # Build
 build/
 .cache/
+
+# 로컬 LLM 모델 가중치 (수백 MB~GB) — 저장소에 포함하지 않는다.
+# src/backend/README.md 의 안내대로 각 환경에서 내려받는다.
+*.gguf
+src/backend/models/

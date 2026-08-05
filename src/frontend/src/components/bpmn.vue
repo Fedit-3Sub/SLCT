@@ -218,6 +218,44 @@
       </section>
 
       <section class="bpmn-accordion">
+        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('catalog')">
+          <span>노드 카탈로그</span>
+          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.catalog }]">▼</span>
+        </button>
+        <div class="bpmn-accordion-body" v-show="accordionOpen.catalog">
+          <p class="bpmn-ai-helper">
+            연합트윈 시뮬레이터와 연계 서비스를 검색해 다이어그램에 추가합니다.
+          </p>
+          <input
+            v-model="catalogQuery"
+            class="catalog-search"
+            type="search"
+            placeholder="이름·기관·설명으로 검색 (예: 혼잡, 미세먼지)"
+          />
+          <p v-if="catalogLoading" class="catalog-empty">불러오는 중...</p>
+          <p v-else-if="!filteredCatalog.length" class="catalog-empty">검색 결과가 없습니다.</p>
+          <div v-else class="catalog-list">
+            <div v-for="group in filteredCatalog" :key="group.category" class="catalog-group">
+              <div class="catalog-group__label">{{ group.category }} ({{ group.items.length }})</div>
+              <button
+                v-for="item in group.items"
+                :key="item.id"
+                type="button"
+                class="catalog-item"
+                :title="item.description"
+                @click="addCatalogNode(item)"
+              >
+                <span class="catalog-item__label">{{ item.label }}</span>
+                <span v-if="item.payload && item.payload.provider" class="catalog-item__meta">
+                  {{ item.payload.provider }}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="bpmn-accordion">
         <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('layout')">
           <span>레이아웃 최적화</span>
           <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.layout }]">▼</span>
@@ -329,8 +367,12 @@ export default {
       aiBusy: false,
       accordionOpen: {
         assistant: true,
+        catalog: false,
         layout: false,
       },
+      catalogItems: [],
+      catalogQuery: "",
+      catalogLoading: false,
       quickPrompts: [
         "관광객 혼잡도를 완화할 실시간 대응 플로우를 만들어줘",
         "기상 센서 이상을 감지하면 경보와 복구 시나리오를 실행하도록 구성해줘",
@@ -375,6 +417,7 @@ export default {
     console.log("bpmn", this.id, this.persistent);
     this.prepareCondensedPrompts();
     this.fetchLlmOptions();
+    this.fetchCatalog();
 
     const PipelineModule = {
       __init__: [
@@ -590,7 +633,96 @@ export default {
     }
   },
 
+  computed: {
+    // 카탈로그를 검색어로 거르고 분류별로 묶어 보여준다.
+    filteredCatalog() {
+      const query = this.catalogQuery.trim().toLowerCase();
+      const matched = !query
+        ? this.catalogItems
+        : this.catalogItems.filter((item) => {
+            const haystack = [
+              item.label,
+              item.category,
+              item.description,
+              item.payload && item.payload.provider,
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(query);
+          });
+
+      const groups = [];
+      const index = {};
+      matched.forEach((item) => {
+        const key = item.category || '기타';
+        if (!index[key]) {
+          index[key] = { category: key, items: [] };
+          groups.push(index[key]);
+        }
+        index[key].items.push(item);
+      });
+      return groups;
+    },
+  },
+
   methods: {
+    fetchCatalog() {
+      this.catalogLoading = true;
+      ApiService.get('/search')
+        .then(({ data }) => {
+          // 기본 노드는 팔레트에 이미 있으므로 연계 서비스/디지털트윈만 노출한다.
+          this.catalogItems = (data?.data || []).filter(
+            (item) => !String(item.id || '').startsWith('builtin_')
+          );
+        })
+        .catch((error) => {
+          console.warn('노드 카탈로그를 불러오지 못했습니다.', error);
+          this.catalogItems = [];
+        })
+        .finally(() => {
+          this.catalogLoading = false;
+        });
+    },
+
+    addCatalogNode(item) {
+      // 카탈로그 항목을 현재 다이어그램에 노드로 추가하고 메타데이터를 붙인다.
+      try {
+        const elementFactory = this.bpmn.get('elementFactory');
+        const modeling = this.bpmn.get('modeling');
+        const canvas = this.bpmn.get('canvas');
+        const elementRegistry = this.bpmn.get('elementRegistry');
+
+        const type = item.bpmn_type || 'bpmn:ServiceTask';
+        const shape = elementFactory.createShape({ type });
+
+        // 기존 요소와 겹치지 않도록 배치 지점을 아래로 밀어낸다.
+        const existing = elementRegistry.filter((el) => el.parent && !el.waypoints && !el.labelTarget);
+        const bottom = existing.reduce((max, el) => Math.max(max, (el.y || 0) + (el.height || 0)), 0);
+        const position = { x: 200, y: (bottom || 100) + 80 };
+
+        const created = modeling.createShape(shape, position, canvas.getRootElement());
+        modeling.updateProperties(created, { name: item.label });
+
+        // 실행 정보를 문서화 필드에 남겨 시뮬레이션·검토 시 참고할 수 있게 한다.
+        const payload = item.payload || {};
+        const lines = [];
+        if (item.description) lines.push(item.description);
+        if (payload.provider) lines.push(`제공: ${payload.provider}`);
+        if (payload.twinId) lines.push(`트윈 ID: ${payload.twinId}`);
+        if (payload.url) lines.push(`URL: ${payload.url}`);
+        if (payload.inputs && payload.inputs.length) lines.push(`입력: ${payload.inputs.join(', ')}`);
+        if (payload.outputs && payload.outputs.length) lines.push(`출력: ${payload.outputs.join(', ')}`);
+        if (lines.length) {
+          const moddle = this.bpmn.get('moddle');
+          const documentation = moddle.create('bpmn:Documentation', { text: lines.join('\n') });
+          modeling.updateProperties(created, { documentation: [documentation] });
+        }
+
+        canvas.scrollToElement(created);
+        this.$emit('catalog-node-added', item);
+      } catch (error) {
+        console.error('노드를 추가하지 못했습니다.', error);
+      }
+    },
+
     // Resolve diagram id by uid if missing
     async ensureDiagramId() {
       if (this?.diagram && this.diagram.id) return this.diagram.id;
@@ -1958,6 +2090,68 @@ export default {
     gap: 8px;
     margin: 12px 0;
   }
+  .catalog-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    border: 1px solid #d5dae2;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .catalog-empty {
+    margin: 6px 0;
+    font-size: 12px;
+    color: #7a8290;
+  }
+
+  .catalog-list {
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .catalog-group__label {
+    margin: 8px 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #5a6472;
+  }
+
+  .catalog-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border: 1px solid #e2e6ec;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .catalog-item:hover {
+    border-color: #4a90d9;
+    background: #f2f7fd;
+  }
+
+  .catalog-item__label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .catalog-item__meta {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: #8a92a0;
+  }
+
   .layout-option {
     display: flex;
     gap: 10px;

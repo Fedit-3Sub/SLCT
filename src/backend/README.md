@@ -22,12 +22,31 @@ python manage.py runserver
 
 | 순위 | 엔진 | 조건 | 특징 |
 |---|---|---|---|
-| 1 | 외부 LLM 서버 (Ollama 등) | 설정이 있고 연결되는 경우 | provider 별 호출은 추후 연결 |
+| 1 | 외부 LLM 서버 (Ollama) | 서버에 연결되는 경우 | 품질 최상, GPU 사용 시 빠름 |
 | 2 | 내장 CPU LLM (llama.cpp) | 런타임 + 모델 파일이 있는 경우 | GPU 불필요, 응답 15~30초 |
 | 3 | 규칙 기반 생성기 | 항상 | 의존성 없음, 즉시 응답 |
 
 어느 경로를 타든 결과는 공통 빌더를 거치므로 **항상 유효한 BPMN XML** 이 반환됩니다.
 좌표(BPMNDI)는 생성하지 않으며 프런트엔드가 자동 레이아웃으로 배치합니다.
+
+**외부 LLM 서버(Ollama) 등록**
+
+코파일럿 모델 선택 목록은 등록된 LLM 설정을 그대로 보여줍니다.
+아래 명령으로 서버에 있는 생성용 모델을 한 번에 등록할 수 있습니다.
+
+```bash
+python manage.py sync_ollama                                  # 기본 http://localhost:11434
+python manage.py sync_ollama --base-url http://<호스트>:11434
+python manage.py sync_ollama --prune                          # 서버에 없는 항목 비활성화
+```
+
+- 임베딩 전용 모델은 자동으로 제외됩니다.
+- 이미 메모리에 적재된(웜) 모델을 기본값으로 우선 선택합니다.
+- 설정에 모델을 지정하지 않으면 요청 시점에 자동으로 고릅니다.
+- 개별 등록/수정은 `POST /api/llm/configs`, `PATCH /api/llm/configs/:id` 또는 Django 관리자에서도 가능합니다.
+
+> 모델이 메모리에 적재되지 않은 상태의 첫 요청은 적재 시간이 더해져 오래 걸립니다
+> (실측: 8B 모델 콜드 약 150초 → 웜 약 5초). 제한시간은 `OLLAMA_TIMEOUT`(기본 180초)로 조정합니다.
 
 **내장 CPU LLM 사용 (선택)**
 

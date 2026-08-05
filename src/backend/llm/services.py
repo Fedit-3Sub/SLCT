@@ -17,7 +17,7 @@ import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from . import local_llm, rule_based
+from . import local_llm, ollama_client, rule_based
 from .bpmn_spec import normalize_spec, spec_to_bpmn_xml, summarize_spec
 from .models import LlmConfig
 
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 PROBE_TIMEOUT = 1.5
 
 ENGINE_LABELS = {
+    "ollama": "외부 LLM 서버",
     "local-llm": "내장 CPU LLM",
     "rule-based": "규칙 기반 생성기",
 }
@@ -60,11 +61,47 @@ def remote_provider_available(config: Optional[LlmConfig]) -> bool:
     return _probe_endpoint(config.base_url or "")
 
 
+def _resolve_ollama_model(config: Optional[LlmConfig], base_url: str) -> str:
+    """사용할 Ollama 모델명을 정한다.
+
+    설정에 모델이 지정돼 있으면 그것을 쓰고, 없으면 서버에 적재된 생성용 모델
+    중 하나를 고른다(설정이 비어 있어도 바로 동작하도록).
+    """
+    if config is not None and getattr(config, "model_name", ""):
+        return config.model_name
+    return ollama_client.pick_model(base_url)
+
+
 def _select_engine(prompt: str, config: Optional[LlmConfig]) -> Dict[str, Any]:
     """가용한 엔진으로 spec 을 생성하고 사용한 엔진 정보를 함께 반환한다."""
-    # 1) 외부 LLM 서버 — 연결은 확인하되 실제 호출은 아직 연결되지 않았다.
-    #    (provider 별 호출 구현 시 이 자리에서 spec 을 받아오면 된다)
+    # 1) 외부 LLM 서버 (Ollama)
     remote_up = remote_provider_available(config)
+    use_ollama = config is None or config.provider == "ollama"
+    if use_ollama:
+        base_url = ollama_client.normalize_base_url(
+            getattr(config, "base_url", "") if config is not None else ""
+        )
+        if ollama_client.is_reachable(base_url):
+            model = _resolve_ollama_model(config, base_url)
+            if model:
+                started = time.time()
+                spec = ollama_client.generate_spec(
+                    prompt, model, base_url,
+                    api_key=getattr(config, "api_key", "") if config is not None else "",
+                )
+                if spec:
+                    usage = spec.pop("_usage", {}) or {}
+                    return {
+                        "spec": spec,
+                        "engine": "ollama",
+                        "engine_detail": model,
+                        "remote_up": True,
+                        "tokens_in": usage.get("tokens_in", 0),
+                        "tokens_out": usage.get("tokens_out", 0),
+                        "elapsed": time.time() - started,
+                    }
+                logger.info("외부 LLM(%s) 생성 실패 — 다음 엔진으로 폴백", model)
+            remote_up = True
 
     # 2) 내장 CPU LLM
     if local_llm.is_available():
@@ -75,6 +112,7 @@ def _select_engine(prompt: str, config: Optional[LlmConfig]) -> Dict[str, Any]:
             return {
                 "spec": spec,
                 "engine": "local-llm",
+                "engine_detail": "",
                 "remote_up": remote_up,
                 "tokens_in": usage.get("tokens_in", 0),
                 "tokens_out": usage.get("tokens_out", 0),
@@ -87,6 +125,7 @@ def _select_engine(prompt: str, config: Optional[LlmConfig]) -> Dict[str, Any]:
     return {
         "spec": rule_based.build_spec(prompt),
         "engine": "rule-based",
+        "engine_detail": "",
         "remote_up": remote_up,
         "tokens_in": max(1, len(prompt or "") // 4),
         "tokens_out": 0,
@@ -121,11 +160,17 @@ def generate_with_llm(prompt: str, config: Optional[LlmConfig], diagram_uid: str
             "engine": "rule-based",
         }
 
-    engine_label = ENGINE_LABELS.get(selected["engine"], selected["engine"])
+    engine = selected["engine"]
+    engine_label = ENGINE_LABELS.get(engine, engine)
+    detail = selected.get("engine_detail") or ""
+    if detail:
+        engine_label = f"{engine_label}: {detail}"
     node_count = len(spec["nodes"])
 
-    if selected["engine"] == "local-llm":
-        note = "내장 CPU LLM 으로 생성했습니다."
+    if engine == "ollama":
+        note = "외부 LLM 서버로 생성했습니다."
+    elif engine == "local-llm":
+        note = "외부 LLM 서버를 쓸 수 없어 내장 CPU LLM 으로 생성했습니다."
     elif selected["remote_up"]:
         note = "규칙 기반 생성기로 초안을 만들었습니다."
     else:

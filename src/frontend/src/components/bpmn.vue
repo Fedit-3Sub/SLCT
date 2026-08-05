@@ -311,6 +311,7 @@ import TokenSimulationModule from '@/lib/bpmn-js-token-simulation';
 import BpmnColorPickerModule from '@/lib/bpmn-js-color-picker';
 import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor, GetPipelineParameters} from '@/lib/bpmn-js-pipeline-properties';
 import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
+import CatalogPaletteModule from '@/lib/bpmn-js-catalog-palette';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
 import ApiService from "@/common/api.service";
 import parse from 'url-parse';
@@ -498,6 +499,7 @@ export default {
         BpmnPipelinePropertiesModule,
         BpmnAddExporter,
         PipelineModule,
+        CatalogPaletteModule,
       ],
       moddleExtensions: {
         pipeline: PipelineModdleDescriptor
@@ -509,6 +511,8 @@ export default {
     }, this.options);
 
 		this.bpmn = new BpmnModeler(_options);
+      // 카탈로그 조회가 모델러 생성보다 먼저 끝났을 수 있으므로 여기서도 반영한다.
+      this.syncCatalogPalette();
     const eventBus = this.bpmn.get('eventBus');
     const commandStack = this.bpmn.get('commandStack');
     const updateHistoryState = () => {
@@ -672,6 +676,7 @@ export default {
           this.catalogItems = (data?.data || []).filter(
             (item) => !String(item.id || '').startsWith('builtin_')
           );
+          this.syncCatalogPalette();
         })
         .catch((error) => {
           console.warn('노드 카탈로그를 불러오지 못했습니다.', error);
@@ -680,6 +685,18 @@ export default {
         .finally(() => {
           this.catalogLoading = false;
         });
+    },
+
+    syncCatalogPalette() {
+      // 왼쪽 팔레트에도 같은 목록을 노출해 드래그로 배치할 수 있게 한다.
+      try {
+        const provider = this.bpmn && this.bpmn.get('catalogPaletteProvider', false);
+        if (provider && typeof provider.setItems === 'function') {
+          provider.setItems(this.catalogItems);
+        }
+      } catch (error) {
+        console.warn('팔레트에 카탈로그를 반영하지 못했습니다.', error);
+      }
     },
 
     addCatalogNode(item) {
@@ -2090,6 +2107,12 @@ export default {
     gap: 8px;
     margin: 12px 0;
   }
+  /* 팔레트의 카탈로그 그룹을 기본 도구와 구분한다. */
+  .djs-palette .group[data-group="catalog"] {
+    border-top: 2px solid #4a90d9;
+    padding-top: 4px;
+  }
+
   .catalog-search {
     width: 100%;
     box-sizing: border-box;

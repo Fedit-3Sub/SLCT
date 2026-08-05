@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from typing import List, Dict
 from django.db.models import Q
+from digitaltwins import catalog, fedit_client
 from digitaltwins.models import DigitalTwinSource
 
 
@@ -60,38 +61,9 @@ class CustomNodesView(APIView):
     """
 
     def _mock_catalog(self) -> List[Dict]:
-        return [
-            {
-                "id": "custom_1",
-                "name": "날씨 조회",
-                "category": "외부 API",
-                "api_id": "weather.current",
-                "description": "현재 기상 정보를 조회하는 외부 API 노드",
-                "schema": {"inputs": ["location"], "outputs": ["temperature", "humidity"]},
-                "bpmn_type": "bpmn:ServiceTask",
-                "icon": "bpmn-icon-service-task",
-            },
-            {
-                "id": "custom_2",
-                "name": "교통 혼잡도 분석",
-                "category": "분석",
-                "api_id": "traffic.analyze",
-                "description": "교통 데이터를 수집하고 혼잡도를 산출",
-                "schema": {"inputs": ["area"], "outputs": ["congestion_index"]},
-                "bpmn_type": "bpmn:Task",
-                "icon": "bpmn-icon-task",
-            },
-            {
-                "id": "custom_3",
-                "name": "SMS 알림 발송",
-                "category": "알림",
-                "api_id": "notify.sms",
-                "description": "문자 메시지로 긴급 알림을 전송",
-                "schema": {"inputs": ["phone", "message"], "outputs": ["status"]},
-                "bpmn_type": "bpmn:SendTask",
-                "icon": "bpmn-icon-send-task",
-            },
-        ]
+        # 연합트윈 연계 서비스 카탈로그. 실제 연계 자료를 반영한 목록이며
+        # digitaltwins.catalog 에서 관리한다.
+        return catalog.service_entries()
 
     def get(self, request):
         q = (request.query_params.get("q") or "").strip().lower()
@@ -151,27 +123,39 @@ class UnifiedSearchView(APIView):
 
     def _digital_twins(self) -> List[Dict]:
         qs = DigitalTwinSource.objects.filter(enabled=True).order_by("name")
-        if not qs.exists():
-            # Align with DigitalTwinListView's demo items
-            fallback = [
-                {"id": 1, "name": "샘플 시뮬레이션 A", "category": "demo", "url": "/api/pipelines/run?id=simA"},
-                {"id": 2, "name": "샘플 시뮬레이션 B", "category": "demo", "url": "/api/pipelines/run?id=simB"},
-            ]
-            qs_items = fallback
-            from_model = False
+        if qs.exists():
+            qs_items = list(qs.values("id", "name", "category", "url", "meta"))
+            origin = "model"
         else:
-            qs_items = list(qs.values("id", "name", "category", "url"))
-            from_model = True
+            # DigitalTwinListView 와 같은 순서로 대체 자료를 찾는다.
+            entries = fedit_client.list_simulations() if fedit_client.is_configured() else []
+            origin = "fedit"
+            if not entries:
+                entries = catalog.simulation_entries()
+                origin = "catalog"
+            qs_items = entries
+
         out = []
         for item in qs_items:
+            meta = item.get("meta") or {}
+            twin = meta.get("twin") or ""
+            description = meta.get("description") or "디지털 트윈 시뮬레이션 호출"
             out.append({
                 "id": f"dt::{item['id']}",
                 "label": item.get("name"),
-                "category": "디지털 트윈",
+                # 분류를 세분화해 팔레트/검색에서 도메인별로 묶이도록 한다.
+                "category": f"디지털 트윈 · {item.get('category')}" if item.get("category") else "디지털 트윈",
                 "bpmn_type": "bpmn:ServiceTask",
                 "icon": "bpmn-icon-service-task",
-                "description": "디지털 트윈 시뮬레이션 호출",
-                "payload": {"url": item.get("url"), "source": "model" if from_model else "demo"},
+                "description": f"[{twin}] {description}" if twin else description,
+                "payload": {
+                    "url": item.get("url"),
+                    "source": origin,
+                    "twinId": meta.get("twinId", ""),
+                    "provider": meta.get("provider", ""),
+                    "inputs": meta.get("inputs", []),
+                    "outputs": meta.get("outputs", []),
+                },
             })
         return out
 

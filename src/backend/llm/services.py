@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
@@ -61,6 +62,15 @@ def remote_provider_available(config: Optional[LlmConfig]) -> bool:
     return _probe_endpoint(config.base_url or "")
 
 
+def ollama_enabled() -> bool:
+    """외부 LLM 서버 경로 사용 여부.
+
+    `OLLAMA_ENABLED=0` 으로 끄면 서버가 떠 있어도 건너뛰고 내장 CPU LLM 부터
+    시도한다. 외부 서버가 없는 배포 환경을 그대로 재현할 때 쓴다.
+    """
+    return os.environ.get("OLLAMA_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+
+
 def _resolve_ollama_model(config: Optional[LlmConfig], base_url: str) -> str:
     """사용할 Ollama 모델명을 정한다.
 
@@ -76,7 +86,7 @@ def _select_engine(prompt: str, config: Optional[LlmConfig]) -> Dict[str, Any]:
     """가용한 엔진으로 spec 을 생성하고 사용한 엔진 정보를 함께 반환한다."""
     # 1) 외부 LLM 서버 (Ollama)
     remote_up = remote_provider_available(config)
-    use_ollama = config is None or config.provider == "ollama"
+    use_ollama = ollama_enabled() and (config is None or config.provider == "ollama")
     if use_ollama:
         base_url = ollama_client.normalize_base_url(
             getattr(config, "base_url", "") if config is not None else ""

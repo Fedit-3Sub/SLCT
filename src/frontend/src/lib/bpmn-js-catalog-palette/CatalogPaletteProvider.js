@@ -1,40 +1,50 @@
 /**
- * 연합트윈 카탈로그 항목을 왼쪽 팔레트에 추가하는 제공자.
+ * 연합트윈 카탈로그를 왼쪽 팔레트에 분류 버튼으로 추가하는 제공자.
  *
- * 기본 BPMN 도구 아래에 별도 그룹으로 붙으며, 기본 요소와 마찬가지로
- * 드래그 또는 클릭으로 캔버스에 배치할 수 있다. 배치된 노드에는 제공 기관과
- * 호출 URL 등 실행에 필요한 정보가 문서화 속성으로 함께 기록된다.
+ * 카탈로그 항목이 30개가 넘어 팔레트에 그대로 나열하면 세로로 넘쳐 화면 밖으로
+ * 잘린다. 그래서 팔레트에는 분류마다 버튼 하나만 두고, 누르면 해당 분류의 항목이
+ * 검색 가능한 메뉴로 열리도록 했다(기존 시뮬레이션 선택과 같은 방식).
  *
- * 항목은 백엔드 카탈로그에서 비동기로 받아오므로, 컴포넌트가 setItems() 로
- * 넣어주면 팔레트를 다시 그린다.
+ * 항목은 백엔드에서 비동기로 받아오므로 setItems() 로 주입하면 팔레트를 다시 그린다.
  */
 
-const TYPE_ICONS = {
-  'bpmn:ServiceTask': 'bpmn-icon-service-task',
-  'bpmn:SendTask': 'bpmn-icon-send-task',
-  'bpmn:ReceiveTask': 'bpmn-icon-receive-task',
-  'bpmn:UserTask': 'bpmn-icon-user-task',
-  'bpmn:Task': 'bpmn-icon-task',
-};
+import { PROVIDER_ID } from './CatalogMenuProvider';
 
-export default function CatalogPaletteProvider(palette, create, elementFactory, moddle, translate) {
+/**
+ * 분류별 표시 정보.
+ *
+ * key      백엔드 분류명(‘디지털 트윈 · ’ 접두사는 제거하고 비교)
+ * icon     팔레트 버튼 아이콘 — 분류를 눈으로 구분할 수 있게 서로 다르게 지정
+ * group    팔레트 그룹 키. 값이 바뀌면 구분선이 들어간다
+ */
+const CATEGORIES = [
+  { key: '연합트윈 연계', label: '연합트윈 연계', icon: 'bpmn-icon-data-store', group: 'catalog-link' },
+  { key: '데이터', label: '데이터', icon: 'bpmn-icon-data-object', group: 'catalog-link' },
+  { key: '분석', label: '분석', icon: 'bpmn-icon-business-rule-task', group: 'catalog-link' },
+  { key: '알림', label: '알림', icon: 'bpmn-icon-send-task', group: 'catalog-link' },
+  { key: '환경', label: '환경 시뮬레이션', icon: 'bpmn-icon-intermediate-event-catch-condition', group: 'catalog-twin' },
+  { key: '관광', label: '관광 시뮬레이션', icon: 'bpmn-icon-user-task', group: 'catalog-twin' },
+  { key: '교통', label: '교통 시뮬레이션', icon: 'bpmn-icon-gateway-parallel', group: 'catalog-twin' },
+  { key: '방재', label: '방재 시뮬레이션', icon: 'bpmn-icon-intermediate-event-catch-escalation', group: 'catalog-twin' },
+  { key: '에너지', label: '에너지 시뮬레이션', icon: 'bpmn-icon-intermediate-event-catch-signal', group: 'catalog-twin' },
+  { key: '도심안전', label: '도심안전 시뮬레이션', icon: 'bpmn-icon-manual-task', group: 'catalog-twin' },
+];
+
+/** 백엔드 분류명에서 ‘디지털 트윈 · ’ 접두사를 뗀 값. */
+function baseCategory(category) {
+  return String(category || '').replace('디지털 트윈 · ', '').trim();
+}
+
+export default function CatalogPaletteProvider(palette, popupMenu, translate) {
   this._palette = palette;
-  this._create = create;
-  this._elementFactory = elementFactory;
-  this._moddle = moddle;
+  this._popupMenu = popupMenu;
   this._translate = translate;
   this._items = [];
 
   palette.registerProvider(this);
 }
 
-CatalogPaletteProvider.$inject = [
-  'palette',
-  'create',
-  'elementFactory',
-  'moddle',
-  'translate',
-];
+CatalogPaletteProvider.$inject = ['palette', 'popupMenu', 'translate'];
 
 /**
  * 팔레트에 노출할 카탈로그 항목을 설정하고 다시 그린다.
@@ -47,44 +57,31 @@ CatalogPaletteProvider.prototype.setItems = function (items) {
 
 CatalogPaletteProvider.prototype.getPaletteEntries = function () {
   const entries = {};
-  const create = this._create;
-  const elementFactory = this._elementFactory;
-  const moddle = this._moddle;
+  const popupMenu = this._popupMenu;
+  const translate = this._translate;
+  const items = this._items;
 
-  this._items.forEach((item, index) => {
-    const type = item.bpmn_type || 'bpmn:ServiceTask';
-    const payload = item.payload || {};
-
-    // 문서화 속성에 남길 실행 정보. 팔레트에서 배치해도 사이드바에서
-    // 추가한 것과 동일한 정보를 갖도록 맞춘다.
-    const lines = [];
-    if (item.description) lines.push(item.description);
-    if (payload.provider) lines.push(`제공: ${payload.provider}`);
-    if (payload.twinId) lines.push(`트윈 ID: ${payload.twinId}`);
-    if (payload.url) lines.push(`URL: ${payload.url}`);
-    if (payload.inputs && payload.inputs.length) lines.push(`입력: ${payload.inputs.join(', ')}`);
-    if (payload.outputs && payload.outputs.length) lines.push(`출력: ${payload.outputs.join(', ')}`);
-
-    function startCreate(event) {
-      const businessObject = moddle.create(type, { name: item.label });
-      if (lines.length) {
-        businessObject.documentation = [
-          moddle.create('bpmn:Documentation', { text: lines.join('\n') }),
-        ];
-      }
-      const shape = elementFactory.createShape({ type, businessObject });
-      create.start(event, shape);
+  CATEGORIES.forEach((category) => {
+    const matched = items.filter((item) => baseCategory(item.category) === category.key);
+    // 해당 분류에 항목이 없으면 버튼을 만들지 않는다.
+    if (!matched.length) {
+      return;
     }
 
-    const category = item.category ? `${item.category} · ` : '';
-    entries[`catalog-${index}`] = {
-      // 기본 도구와 섞이지 않도록 별도 그룹으로 분리한다.
-      group: 'catalog',
-      className: TYPE_ICONS[type] || 'bpmn-icon-service-task',
-      title: `${category}${item.label}${payload.provider ? ` (${payload.provider})` : ''}`,
+    function openMenu(event) {
+      popupMenu.open({ items: matched, event }, PROVIDER_ID, event, {
+        title: translate(`${category.label} (${matched.length})`),
+        width: 400,
+        search: true,
+      });
+    }
+
+    entries[`catalog-${category.key}`] = {
+      group: category.group,
+      className: category.icon,
+      title: `${category.label} — ${matched.length}개`,
       action: {
-        dragstart: startCreate,
-        click: startCreate,
+        click: openMenu,
       },
     };
   });

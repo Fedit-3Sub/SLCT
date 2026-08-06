@@ -2107,11 +2107,10 @@ export default {
     gap: 8px;
     margin: 12px 0;
   }
-  /* 팔레트의 카탈로그 그룹을 기본 도구와 구분한다. */
-  .djs-palette .group[data-group="catalog"] {
-    border-top: 2px solid #4a90d9;
-    padding-top: 4px;
-  }
+  /* 카탈로그 분류 버튼은 기본 도구와 구분되도록 색을 준다.
+     각 버튼을 누르면 해당 분류의 항목이 검색 가능한 메뉴로 열린다. */
+  .djs-palette .group[data-group="catalog-link"] .entry { color: #2f6fb5; }
+  .djs-palette .group[data-group="catalog-twin"] .entry { color: #2e9b6b; }
 
   .catalog-search {
     width: 100%;

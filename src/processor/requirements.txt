@@ -1,12 +1,19 @@
-pandas
-requests
+# 프로세서 의존성.
+#
+# 직접 의존성과 전이 의존성 모두 permissive 라이선스(BSD-3 / MIT / Apache-2.0)
+# 만 사용하며, 배포물에 독점 라이선스 구성요소가 딸려 들어가지 않는다.
+# BPMN XML 파싱은 표준 라이브러리(xml.etree.ElementTree)로 처리한다.
+#
+# 제거한 항목과 사유:
+#   tsai, fasttransform  torch 를 통해 nvidia-*-cu13 (NVIDIA 독점 라이선스)
+#                        바이너리가 전이 설치된다.
+#   datasets             내려받는 데이터셋마다 라이선스가 달라(비상업 조건 포함)
+#                        배포물의 라이선스 상태를 확정할 수 없다. 코드가 쓰던
+#                        list_datasets 는 datasets 3.x 에서 삭제된 API 다.
+#   tiktoken             인코딩 파일을 실행 시점에 외부 저장소에서 내려받아
+#                        산출물이 외부 인프라에 의존하게 된다.
+#   pandas               위 항목을 제거하면서 사용처가 함께 사라졌다.
 
-tsai
-fasttransform
-
-flask
-flask_cors
-
-datasets
-pyyaml
-tiktoken
+Flask==3.1.3
+flask-cors==6.0.5
+requests==2.32.3

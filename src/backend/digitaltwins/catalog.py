@@ -403,6 +403,58 @@ def simulation_entries() -> List[Dict[str, Any]]:
     return entries
 
 
+def all_entries() -> List[Dict[str, Any]]:
+    """시뮬레이션과 연계 서비스를 합친 목록(이름·분류·URL 기준)."""
+    entries = [
+        {
+            "name": item["name"],
+            "category": item["category"],
+            "url": item["url"],
+            "provider": item["provider"],
+            "bpmn_type": "bpmn:ServiceTask",
+            "twin_id": item["twin_id"],
+        }
+        for item in SIMULATIONS
+    ]
+    entries += [
+        {
+            "name": item["name"],
+            "category": item["category"],
+            "url": f"/api/pipelines/run?id={item['api_id']}",
+            "provider": "",
+            "bpmn_type": item["bpmn_type"],
+            "twin_id": "",
+        }
+        for item in SERVICES
+    ]
+    return entries
+
+
+def index_by_name() -> Dict[str, Dict[str, Any]]:
+    """이름으로 카탈로그 항목을 찾기 위한 색인."""
+    return {item["name"]: item for item in all_entries()}
+
+
+def names() -> List[str]:
+    """모델이 고를 수 있는 카탈로그 항목 이름 목록."""
+    return [item["name"] for item in all_entries()]
+
+
+def prompt_catalog(limit: int = 60) -> str:
+    """시스템 프롬프트에 넣을 카탈로그 요약.
+
+    모델이 임의로 이름을 지어내지 않고 실제 등록된 시뮬레이터·서비스를
+    고르도록 분류별로 정리해 제공한다.
+    """
+    grouped: Dict[str, List[str]] = {}
+    for item in all_entries()[:limit]:
+        grouped.setdefault(item["category"], []).append(item["name"])
+    lines = []
+    for category, items in grouped.items():
+        lines.append(f"- {category}: " + " / ".join(items))
+    return "\n".join(lines)
+
+
 def service_entries() -> List[Dict[str, Any]]:
     """외부 API 노드 카탈로그 형태로 정규화한 서비스 목록."""
     entries = []

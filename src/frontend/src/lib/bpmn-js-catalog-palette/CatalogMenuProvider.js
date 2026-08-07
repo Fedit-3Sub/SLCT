@@ -31,6 +31,25 @@ CatalogMenuProvider.$inject = [
   'translate',
 ];
 
+/**
+ * 시뮬레이션이 호출할 수 있도록 실행 URL 을 확장 속성으로 붙인다.
+ *
+ * 토큰 시뮬레이션은 extensionElements → pipeline:Parameters → pipeline:Parameter 의
+ * url 값을 읽어 요청을 보낸다. 설명(documentation)에만 URL 을 적어두면 사람이 읽을
+ * 수는 있어도 실행되지 않으므로, 배치 시점에 확장 속성까지 함께 만들어 준다.
+ */
+function attachPipelineUrl(moddle, businessObject, item) {
+  const url = (item.payload || {}).url;
+  if (!url) {
+    return;
+  }
+  const parameter = moddle.create('pipeline:Parameter', { name: item.label, url });
+  const parameters = moddle.create('pipeline:Parameters', { values: [parameter] });
+  businessObject.extensionElements = moddle.create('bpmn:ExtensionElements', {
+    values: [parameters],
+  });
+}
+
 /** 노드에 남길 실행 정보를 문단으로 만든다. */
 function buildDocumentation(item) {
   const payload = item.payload || {};
@@ -74,6 +93,7 @@ CatalogMenuProvider.prototype.getPopupMenuEntries = function (target) {
             self._moddle.create('bpmn:Documentation', { text: documentation }),
           ];
         }
+        attachPipelineUrl(self._moddle, businessObject, item);
 
         const shape = self._elementFactory.createShape({
           type,

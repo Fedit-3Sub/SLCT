@@ -29,7 +29,7 @@ DEFAULT_BASE_URL = "http://localhost:11434"
 # 임베딩 전용 모델은 대화 생성에 쓸 수 없으므로 목록에서 제외한다.
 EMBEDDING_HINTS = ("embed", "bge", "e5-", "gte-")
 
-SYSTEM_PROMPT = (
+BASE_SYSTEM_PROMPT = (
     "당신은 BPMN 프로세스 설계 전문가입니다. "
     "사용자의 요구사항을 분석해 실무에서 쓸 수 있는 업무 흐름을 JSON 으로 설계하세요.\n"
     "- startEvent 로 시작해 endEvent 로 끝나며 5~10개의 단계로 구성합니다.\n"
@@ -40,6 +40,27 @@ SYSTEM_PROMPT = (
     "- flows 는 모든 노드를 빠짐없이 연결해야 합니다.\n"
     "- 모든 이름(name)은 한국어로 구체적으로 작성합니다."
 )
+
+CATALOG_GUIDE = (
+    "\n\n[등록된 시뮬레이터·연계 서비스]\n"
+    "{catalog}\n\n"
+    "위 목록에 요구사항과 맞는 항목이 있으면 해당 단계의 catalogId 에 목록의 이름을 "
+    "**정확히 그대로** 적으세요. 그러면 실행에 필요한 호출 정보가 자동으로 연결됩니다.\n"
+    "맞는 항목이 없으면 catalogId 는 빈 문자열로 두고 name 만 자유롭게 작성하세요."
+)
+
+
+def system_prompt() -> str:
+    """카탈로그 목록을 포함한 시스템 프롬프트."""
+    try:
+        from digitaltwins import catalog
+
+        listing = catalog.prompt_catalog()
+    except Exception:
+        listing = ""
+    if not listing:
+        return BASE_SYSTEM_PROMPT
+    return BASE_SYSTEM_PROMPT + CATALOG_GUIDE.format(catalog=listing)
 
 # Ollama 에 전달할 응답 스키마 — 내장 LLM 의 GBNF 문법과 같은 구조를 강제한다.
 RESPONSE_SCHEMA: Dict[str, Any] = {
@@ -54,6 +75,8 @@ RESPONSE_SCHEMA: Dict[str, Any] = {
                     "id": {"type": "string"},
                     "type": {"type": "string", "enum": list(NODE_TYPES)},
                     "name": {"type": "string"},
+                    # 등록된 시뮬레이터·서비스를 지목하면 실행 URL 이 자동 연결된다.
+                    "catalogId": {"type": "string"},
                 },
                 "required": ["id", "type", "name"],
             },
@@ -166,7 +189,7 @@ def generate_spec(prompt: str, model: str, base_url: Optional[str] = None,
         "format": RESPONSE_SCHEMA,
         "options": {"temperature": 0.4},
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt()},
             {"role": "user", "content": (prompt or "").strip()[:4000]},
         ],
     }

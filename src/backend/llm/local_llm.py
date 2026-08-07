@@ -33,15 +33,35 @@ _NODE_TYPE_RULE = " | ".join(f'"\\"{t}\\""' for t in NODE_TYPES)
 # 주의: llama.cpp 의 GBNF 파서는 규칙을 여러 줄로 나눠 쓰는 것을 허용하지 않는다.
 # 줄바꿈으로 이어쓰면 파싱이 실패하고 네이티브 계층에서 프로세스가 죽을 수 있으므로
 # 규칙 하나는 반드시 한 줄로 유지할 것.
+def _catalog_rule() -> str:
+    """catalogId 를 등록된 이름 중 하나(또는 빈 문자열)로 제한하는 규칙.
+
+    소형 모델은 목록을 프롬프트로만 주면 이름을 정확히 옮기지 못한다.
+    문법에서 선택지를 고정하면 항상 실제 항목을 가리키게 된다.
+    """
+    try:
+        from digitaltwins import catalog
+
+        options = catalog.names()
+    except Exception:
+        options = []
+    literals = ['"\\"\\""']  # 해당 없음 → 빈 문자열
+    for name in options:
+        escaped = name.replace('\\', '').replace('"', '')
+        literals.append(f'"\\"{escaped}\\""')
+    return " | ".join(literals)
+
+
 BPMN_GRAMMAR = "\n".join([
     r'root ::= "{" ws "\"name\":" ws string "," ws "\"nodes\":" ws nodes "," ws "\"flows\":" ws flows ws "}"',
     # 노드 수를 3~8개로 문법 차원에서 제한한다. 소형 모델은 프롬프트의 개수 지시를
     # 자주 무시하는데, 이 제약이 출력 길이(=응답 지연)와 주제 이탈을 함께 억제한다.
     r'nodes ::= "[" ws node (ws "," ws node){2,7} ws "]"',
-    r'node ::= "{" ws "\"id\":" ws string "," ws "\"type\":" ws nodetype "," ws "\"name\":" ws string ws "}"',
+    r'node ::= "{" ws "\"id\":" ws string "," ws "\"type\":" ws nodetype "," ws "\"name\":" ws string "," ws "\"catalogId\":" ws catalogid ws "}"',
     r'flows ::= "[" ws "]" | "[" ws flow (ws "," ws flow)* ws "]"',
     r'flow ::= "{" ws "\"from\":" ws string "," ws "\"to\":" ws string "," ws "\"name\":" ws string ws "}"',
     "nodetype ::= " + _NODE_TYPE_RULE,
+    "catalogid ::= " + _catalog_rule(),
     r'string ::= "\"" char* "\""',
     r'char ::= [^"\\] | "\\" ["\\bfnrt]',
     r'ws ::= [ \t\n]*',
@@ -60,8 +80,26 @@ SYSTEM_PROMPT = (
     "여러 갈래를 동시에 수행하면 parallelGateway 입니다. "
     "단순한 순차 단계에는 게이트웨이를 쓰지 마세요.\n"
     "4. flows 는 모든 노드를 빠짐없이 연결해야 합니다.\n"
-    "5. 모든 이름(name)은 한국어로 간결하게 작성합니다."
+    "5. 모든 이름(name)은 한국어로 간결하게 작성합니다.\n"
+    "6. 아래 목록에 맞는 항목이 있으면 catalogId 에 그 이름을 정확히 그대로 적고, "
+    "없으면 빈 문자열(\"\")로 둡니다."
 )
+
+CATALOG_GUIDE = "\n\n[등록된 시뮬레이터·연계 서비스]\n{catalog}"
+
+
+def system_prompt() -> str:
+    """카탈로그 목록을 포함한 시스템 프롬프트."""
+    try:
+        from digitaltwins import catalog
+
+        # 소형 모델은 문맥이 길어지면 지시를 놓치므로 목록을 짧게 유지한다.
+        listing = catalog.prompt_catalog(limit=20)
+    except Exception:
+        listing = ""
+    if not listing:
+        return SYSTEM_PROMPT
+    return SYSTEM_PROMPT + CATALOG_GUIDE.format(catalog=listing)
 
 
 def _physical_cores() -> int:
@@ -201,7 +239,7 @@ def generate_spec(prompt: str) -> Optional[Dict[str, Any]]:
         grammar = LlamaGrammar.from_string(BPMN_GRAMMAR, verbose=False)
         result = model.create_chat_completion(
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt()},
                 {"role": "user", "content": (prompt or "").strip()[:2000]},
             ],
             grammar=grammar,

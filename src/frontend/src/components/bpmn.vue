@@ -727,10 +727,24 @@ export default {
         if (payload.url) lines.push(`URL: ${payload.url}`);
         if (payload.inputs && payload.inputs.length) lines.push(`입력: ${payload.inputs.join(', ')}`);
         if (payload.outputs && payload.outputs.length) lines.push(`출력: ${payload.outputs.join(', ')}`);
+        const moddle = this.bpmn.get('moddle');
         if (lines.length) {
-          const moddle = this.bpmn.get('moddle');
           const documentation = moddle.create('bpmn:Documentation', { text: lines.join('\n') });
           modeling.updateProperties(created, { documentation: [documentation] });
+        }
+
+        // 시뮬레이션이 호출할 수 있도록 실행 URL 을 확장 속성으로 붙인다.
+        // (설명에만 적어두면 사람만 읽을 수 있고 실제로 호출되지 않는다)
+        if (payload.url) {
+          const parameter = moddle.create('pipeline:Parameter', {
+            name: item.label,
+            url: payload.url,
+          });
+          const parameters = moddle.create('pipeline:Parameters', { values: [parameter] });
+          const extensionElements = moddle.create('bpmn:ExtensionElements', {
+            values: [parameters],
+          });
+          modeling.updateProperties(created, { extensionElements });
         }
 
         canvas.scrollToElement(created);

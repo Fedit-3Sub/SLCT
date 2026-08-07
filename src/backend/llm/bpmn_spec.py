@@ -81,6 +81,8 @@ DEFINITIONS_ATTRS = (
     'xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" '
     'xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" '
     'xmlns:di="http://www.omg.org/spec/DD/20100524/DI" '
+    # 토큰 시뮬레이션이 읽는 실행 URL 확장. 프런트엔드의 pipeline 디스크립터와 같은 uri 를 쓴다.
+    'xmlns:pipeline="pipeline://" '
     'targetNamespace="http://bpmn.io/schema/bpmn"'
 )
 
@@ -145,7 +147,13 @@ def normalize_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
         if original is not None:
             seen_ids.setdefault(str(original), node_id)
         seen_ids.setdefault(node_id, node_id)
-        nodes.append({"id": node_id, "type": node_type, "name": _clean_name(item.get("name"))})
+        nodes.append({
+            "id": node_id,
+            "type": node_type,
+            "name": _clean_name(item.get("name")),
+            # 카탈로그 항목을 지목한 경우 실행 URL 을 붙이기 위해 이름을 보존한다.
+            "catalogId": _clean_name(item.get("catalogId")),
+        })
 
     if not nodes:
         nodes = [
@@ -245,6 +253,64 @@ def normalize_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
     return {"name": name, "nodes": nodes, "flows": flows}
 
 
+def _catalog_index() -> Dict[str, Dict[str, Any]]:
+    """카탈로그 색인. 카탈로그를 쓸 수 없는 환경에서도 생성이 멈추지 않게 감싼다."""
+    try:
+        from digitaltwins import catalog
+
+        return catalog.index_by_name()
+    except Exception:  # 앱 미로드 등
+        return {}
+
+
+# 노드 이름에서 카탈로그 항목을 추정할 때 쓰는 핵심어.
+# 소형 모델은 catalogId 를 지정하지 못하고 비워두는 일이 많아, 이름을 보고 서버에서 보정한다.
+_NAME_HINTS = (
+    ("미세먼지", ("미세먼지 시뮬레이터 엔진", "환경 디지털 트윈 미세먼지 예측시뮬레이션")),
+    ("대기", ("대기환경 확산 시뮬레이션",)),
+    ("공기질", ("실시간 공기질 모니터링",)),
+    ("혼잡", ("도로혼잡도 예측 엔진", "관광지 쾌적지수 산출")),
+    ("주차", ("주차장 혼잡도 예측 엔진",)),
+    ("산사태", ("산사태 취약지 시뮬레이션",)),
+    ("침수", ("침수 예측 시뮬레이션",)),
+    ("대피", ("재난 대피 시뮬레이션",)),
+    ("cctv", ("CCTV 취약지 분석",)),
+    ("전력", ("전력 수요 예측",)),
+    ("수집", ("관측 데이터 수집",)),
+    ("전처리", ("데이터 정제·전처리",)),
+    ("정제", ("데이터 정제·전처리",)),
+    ("이상", ("이상 탐지",)),
+    ("임계", ("임계치 판정",)),
+    ("판정", ("임계치 판정",)),
+    ("문자", ("SMS 알림 발송",)),
+    ("sms", ("SMS 알림 발송",)),
+    ("기관", ("유관기관 통보",)),
+    ("통보", ("유관기관 통보",)),
+    ("사이니지", ("디지털 사이니지 표출",)),
+    ("저장", ("결과 저장",)),
+    ("기록", ("결과 저장",)),
+)
+
+
+def resolve_catalog_id(name: str, declared: str, index: Dict[str, Dict[str, Any]]) -> str:
+    """노드에 연결할 카탈로그 항목을 정한다.
+
+    모델이 지정한 값이 실제 항목이면 그대로 쓰고, 비었거나 목록에 없으면
+    노드 이름의 핵심어로 추정한다. 추정도 실패하면 연결하지 않는다.
+    """
+    if declared and declared in index:
+        return declared
+    lowered = (name or "").lower()
+    if not lowered:
+        return ""
+    for hint, candidates in _NAME_HINTS:
+        if hint in lowered:
+            for candidate in candidates:
+                if candidate in index:
+                    return candidate
+    return ""
+
+
 def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> str:
     """spec 을 BPMN 2.0 XML 로 변환한다(좌표 없음 — 프런트가 자동 배치)."""
     data = normalize_spec(spec)
@@ -262,16 +328,34 @@ def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> st
         f'  <bpmn:process id="{process_id}" name="{xml_escape(data["name"])}" isExecutable="false">',
     ]
 
+    catalog_index = _catalog_index()
+
     for node in nodes:
         tag = NODE_TYPES[node["type"]]
         attrs = f'id="{node["id"]}"'
         if node["name"]:
             attrs += f' name="{xml_escape(node["name"])}"'
-        refs = [f"    <bpmn:incoming>{fid}</bpmn:incoming>" for fid in incoming[node["id"]]]
-        refs += [f"    <bpmn:outgoing>{fid}</bpmn:outgoing>" for fid in outgoing[node["id"]]]
-        if refs:
+
+        body: List[str] = []
+        # 카탈로그 항목을 지목했다면 시뮬레이션이 호출할 수 있도록 실행 URL 을 심는다.
+        resolved = resolve_catalog_id(node["name"], node.get("catalogId") or "", catalog_index)
+        entry = catalog_index.get(resolved)
+        if entry and entry.get("url"):
+            label = xml_escape(node["name"] or entry["name"])
+            body.append("      <bpmn:extensionElements>")
+            body.append("        <pipeline:parameters>")
+            body.append(
+                f'          <pipeline:parameter name="{label}" url="{xml_escape(entry["url"])}" />'
+            )
+            body.append("        </pipeline:parameters>")
+            body.append("      </bpmn:extensionElements>")
+
+        body += [f"      <bpmn:incoming>{fid}</bpmn:incoming>" for fid in incoming[node["id"]]]
+        body += [f"      <bpmn:outgoing>{fid}</bpmn:outgoing>" for fid in outgoing[node["id"]]]
+
+        if body:
             lines.append(f"    <{tag} {attrs}>")
-            lines.extend(refs)
+            lines.extend(body)
             lines.append(f"    </{tag}>")
         else:
             lines.append(f"    <{tag} {attrs} />")

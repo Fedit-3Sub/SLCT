@@ -13,43 +13,61 @@ from typing import Any, Dict, List
 
 # 도메인별 단계 명칭. 프런트엔드 추천 프롬프트(관광객 혼잡 / 기상 센서 / 교통 사고)를
 # 우선 다루고, 해당 없으면 범용 명칭을 사용한다.
+# 각 단계에 대응하는 카탈로그 항목 이름(`*_catalog`)을 함께 둔다.
+# 이 이름이 spec 의 catalogId 로 들어가면 빌더가 실행 URL 을 연결한다.
 DOMAINS = [
     {
         "keys": ("관광", "혼잡", "밀집", "인파", "방문객"),
         "name": "관광지 혼잡 대응",
         "collect": "관광객 밀집도 수집",
+        "collect_catalog": "관광 디지털 트윈 시뮬레이션",
         "analyze": "혼잡도 분석",
+        "analyze_catalog": "관광지 쾌적지수 산출",
         "condition": "혼잡 임계 초과?",
         "action": "혼잡 완화 안내 발송",
+        "action_catalog": "디지털 사이니지 표출",
         "recover": "분산 경로 안내",
+        "recover_catalog": "",
     },
     {
         "keys": ("기상", "날씨", "센서", "온도", "습도", "미세먼지", "수질"),
         "name": "기상 센서 이상 대응",
         "collect": "기상 센서 데이터 수집",
+        "collect_catalog": "관측 데이터 수집",
         "analyze": "센서 이상 판정",
+        "analyze_catalog": "이상 탐지",
         "condition": "이상 감지?",
         "action": "이상 경보 발송",
+        "action_catalog": "SMS 알림 발송",
         "recover": "복구 시나리오 실행",
+        "recover_catalog": "",
     },
     {
         "keys": ("교통", "사고", "차량", "도로", "정체"),
         "name": "교통 사고 대응",
         "collect": "교통 사고 정보 수집",
+        "collect_catalog": "관측 데이터 수집",
         "analyze": "사고 영향 분석",
+        "analyze_catalog": "도로혼잡도 예측 엔진",
         "condition": "유관기관 통보 대상?",
         "action": "관련 기관 통합 알림",
+        "action_catalog": "유관기관 통보",
         "recover": "우회 경로 안내",
+        "recover_catalog": "",
     },
 ]
 
 DEFAULT_DOMAIN = {
     "name": "생성된 서비스 로직",
     "collect": "데이터 수집",
+    "collect_catalog": "관측 데이터 수집",
     "analyze": "데이터 분석",
+    "analyze_catalog": "데이터 정제·전처리",
     "condition": "조건 충족?",
     "action": "알림 발송",
+    "action_catalog": "SMS 알림 발송",
     "recover": "후속 조치 실행",
+    "recover_catalog": "",
 }
 
 # 단계별 트리거 키워드
@@ -88,21 +106,21 @@ def build_spec(prompt: str) -> Dict[str, Any]:
     prev = "Start_1"
     seq = 0
 
-    def add(node_type: str, name: str, label: str = "") -> str:
+    def add(node_type: str, name: str, label: str = "", catalog_id: str = "") -> str:
         nonlocal prev, seq
         seq += 1
         node_id = f"Node_{seq}"
-        nodes.append({"id": node_id, "type": node_type, "name": name})
+        nodes.append({"id": node_id, "type": node_type, "name": name, "catalogId": catalog_id})
         flows.append({"from": prev, "to": node_id, "name": label})
         prev = node_id
         return node_id
 
     # 1) 수집 — 명시되지 않아도 파이프라인의 시작으로 항상 둔다.
-    add("serviceTask", domain["collect"])
+    add("serviceTask", domain["collect"], catalog_id=domain.get("collect_catalog", ""))
 
     # 2) 분석
     if _has(lowered, KW_ANALYZE) or _has(lowered, KW_COLLECT):
-        add("serviceTask", domain["analyze"])
+        add("serviceTask", domain["analyze"], catalog_id=domain.get("analyze_catalog", ""))
 
     # 3) 조건 분기 — 조건 신호가 있으면 게이트웨이로 두 갈래를 만든다.
     if _has(lowered, KW_CONDITION):
@@ -111,8 +129,13 @@ def build_spec(prompt: str) -> Dict[str, Any]:
         seq += 1
         action_id = f"Node_{seq}"
         action_name = domain["action"] if _has(lowered, KW_NOTIFY) else domain["recover"]
-        nodes.append({"id": action_id, "type": "sendTask" if _has(lowered, KW_NOTIFY) else "task",
-                      "name": action_name})
+        nodes.append({
+            "id": action_id,
+            "type": "sendTask" if _has(lowered, KW_NOTIFY) else "task",
+            "name": action_name,
+            "catalogId": domain.get("action_catalog", "") if _has(lowered, KW_NOTIFY)
+            else domain.get("recover_catalog", ""),
+        })
         flows.append({"from": gateway, "to": action_id, "name": "예"})
 
         # 대응 분기에 복구 단계가 더 필요한 경우
@@ -136,11 +159,11 @@ def build_spec(prompt: str) -> Dict[str, Any]:
 
     # 4) 분기가 없으면 선형 파이프라인
     if _has(lowered, KW_NOTIFY):
-        add("sendTask", domain["action"])
+        add("sendTask", domain["action"], catalog_id=domain.get("action_catalog", ""))
     if _has(lowered, KW_RECOVER):
-        add("task", domain["recover"])
+        add("task", domain["recover"], catalog_id=domain.get("recover_catalog", ""))
     if _has(lowered, KW_STORE):
-        add("task", "결과 저장")
+        add("task", "결과 저장", catalog_id="결과 저장")
 
     nodes.append({"id": "End_1", "type": "endEvent", "name": "종료"})
     flows.append({"from": prev, "to": "End_1", "name": ""})

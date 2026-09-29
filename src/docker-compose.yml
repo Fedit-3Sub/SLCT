@@ -7,6 +7,8 @@ services:
     image: bpmn-backend:latest
     restart: unless-stopped
     env_file: ./backend/.env
+    volumes:
+      - backend-data:/opt/app/data
     ports:
       - "1337:1337"
     networks:
@@ -19,7 +21,10 @@ services:
     build: ./frontend
     image: bpmn-frontend:latest
     restart: unless-stopped
-    env_file: ./frontend/.env
+    environment:
+      BACKEND_URL: http://backend:1337
+    depends_on:
+      - backend
     ports:
       - "9900:9900"
     networks:
@@ -46,3 +51,6 @@ networks:
   kt-bpmn:
     name: kt-bpmn
     driver: bridge
+
+volumes:
+  backend-data:

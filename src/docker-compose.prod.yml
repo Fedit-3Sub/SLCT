@@ -1,0 +1,50 @@
+# 서비스 로직 생성 도구 운영 배포용.
+# 레지스트리의 이미지를 받아 실행한다(빌드하지 않음).
+#
+#   SLCT_TAG=20260929 docker compose -f docker-compose.prod.yml pull
+#   SLCT_TAG=20260929 docker compose -f docker-compose.prod.yml up -d
+#
+# 이미지는 scripts/build-and-push.sh 로 만든다.
+name: slct
+
+x-registry: &registry ${SLCT_REGISTRY:-harbor.k-sw.org/keti}
+
+services:
+  backend:
+    image: ${SLCT_REGISTRY:-harbor.k-sw.org/keti}/slct-backend:${SLCT_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY 를 .env 에 지정하세요}
+      DJANGO_DEBUG: "0"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      # 외부 LLM 서버가 없으면 내장 CPU LLM → 규칙 기반 순으로 응답한다.
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED:-0}
+      FEDIT_META_TOKEN: ${FEDIT_META_TOKEN:-}
+    volumes:
+      - backend-data:/opt/app/data
+    ports:
+      - "${SLCT_BACKEND_PORT:-1337}:1337"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    image: ${SLCT_REGISTRY:-harbor.k-sw.org/keti}/slct-frontend:${SLCT_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:1337
+    depends_on:
+      - backend
+    ports:
+      - "${SLCT_FRONTEND_PORT:-9900}:9900"
+
+  processor:
+    image: ${SLCT_REGISTRY:-harbor.k-sw.org/keti}/slct-processor:${SLCT_TAG:-latest}
+    restart: unless-stopped
+    volumes:
+      - processor-data:/app/data
+    ports:
+      - "${SLCT_PROCESSOR_PORT:-9901}:9901"
+
+volumes:
+  backend-data:
+  processor-data:

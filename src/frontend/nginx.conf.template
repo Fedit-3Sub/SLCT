@@ -1,0 +1,27 @@
+server {
+    listen 9900;
+    server_name _;
+    client_max_body_size 20m;
+
+    root /usr/share/nginx/html;
+
+    # 백엔드 API · 관리자 · API 문서
+    location ~ ^/(api|admin|static)/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # 코파일럿(내장 LLM) 응답이 수십 초 걸릴 수 있다.
+        proxy_read_timeout 300s;
+    }
+
+    location /assets/ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # 편집기 경로(/{서비스로직ID})는 모두 앱으로 보낸다.
+    location / {
+        try_files $uri /index.html;
+    }
+}

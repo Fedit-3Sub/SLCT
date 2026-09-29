@@ -256,6 +256,95 @@
       </section>
 
       <section class="bpmn-accordion">
+        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('run')">
+          <span>로직 실행</span>
+          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.run }]">▼</span>
+        </button>
+        <div class="bpmn-accordion-body" v-show="accordionOpen.run">
+          <p class="bpmn-ai-helper">
+            서버에서 다이어그램을 순서대로 실행합니다. 노드 호출 결과가 다음 노드의 입력으로 넘어가고
+            분기 조건이 평가되며, 노드별 입출력이 기록됩니다.
+          </p>
+          <label class="run-inputs">
+            <span class="run-inputs__label">실행 입력값 (JSON, 선택)</span>
+            <textarea
+              v-model="runInputsText"
+              class="run-inputs__textarea"
+              rows="3"
+              placeholder='{"지역코드": "47111", "기온": 24}'
+            />
+          </label>
+          <p v-if="runError" class="run-error">{{ runError }}</p>
+          <div class="bpmn-ai-actions">
+            <button
+              class="bpmn-btn bpmn-btn--primary"
+              type="button"
+              @click="executeLogic"
+              :disabled="runBusy"
+            >
+              {{ runBusy ? '실행 중...' : '서버에서 실행' }}
+            </button>
+          </div>
+
+          <div v-if="currentRun" class="run-result">
+            <div class="run-result__head">
+              <span :class="['run-badge', `run-badge--${currentRun.status}`]">{{ runStatusLabel(currentRun.status) }}</span>
+              <span class="run-result__meta">
+                #{{ currentRun.id }}
+                <template v-if="currentRun.durationMs != null"> · {{ formatDuration(currentRun.durationMs) }}</template>
+              </span>
+            </div>
+            <p v-if="currentRun.error" class="run-error">{{ currentRun.error }}</p>
+            <ol class="run-steps">
+              <li
+                v-for="step in currentRun.steps || []"
+                :key="step.seq"
+                :class="['run-step', `run-step--${step.status}`]"
+              >
+                <details>
+                  <summary @click="focusElement(step.nodeId)">
+                    <span class="run-step__seq">{{ step.seq }}</span>
+                    <span class="run-step__name">{{ step.nodeName || step.nodeId }}</span>
+                    <span class="run-step__meta">{{ formatDuration(step.durationMs) }}</span>
+                  </summary>
+                  <div class="run-step__body">
+                    <div v-if="step.request && step.request.url" class="run-step__row">
+                      <b>호출</b> {{ step.request.method }} {{ step.request.url }}
+                      <template v-if="step.attempts > 1"> ({{ step.attempts }}회 시도)</template>
+                    </div>
+                    <div v-if="hasKeys(step.inputs)" class="run-step__row">
+                      <b>입력</b><pre>{{ prettyJson(step.inputs) }}</pre>
+                    </div>
+                    <div v-if="hasKeys(step.outputs)" class="run-step__row">
+                      <b>출력</b><pre>{{ prettyJson(step.outputs) }}</pre>
+                    </div>
+                    <div v-if="step.error" class="run-step__row run-error">{{ step.error }}</div>
+                    <div v-for="(warning, index) in step.warnings" :key="index" class="run-step__row run-warning">
+                      {{ warning }}
+                    </div>
+                  </div>
+                </details>
+              </li>
+            </ol>
+          </div>
+
+          <div v-if="runHistory.length" class="run-history">
+            <div class="catalog-group__label">최근 실행</div>
+            <button
+              v-for="run in runHistory"
+              :key="run.id"
+              type="button"
+              class="catalog-item"
+              @click="loadRun(run.id)"
+            >
+              <span class="catalog-item__label">#{{ run.id }} {{ formatTime(run.createdAt) }}</span>
+              <span :class="['run-badge', `run-badge--${run.status}`]">{{ runStatusLabel(run.status) }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="bpmn-accordion">
         <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('layout')">
           <span>레이아웃 최적화</span>
           <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.layout }]">▼</span>
@@ -310,6 +399,7 @@ import {BpmnPropertiesPanelModule, BpmnPropertiesProviderModule} from '@/lib/bpm
 import TokenSimulationModule from '@/lib/bpmn-js-token-simulation';
 import BpmnColorPickerModule from '@/lib/bpmn-js-color-picker';
 import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor, GetPipelineParameters} from '@/lib/bpmn-js-pipeline-properties';
+import { createCatalogExtension } from '@/lib/bpmn-js-pipeline-properties/util';
 import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 import CatalogPaletteModule from '@/lib/bpmn-js-catalog-palette';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
@@ -369,8 +459,16 @@ export default {
       accordionOpen: {
         assistant: true,
         catalog: false,
+        run: false,
         layout: false,
       },
+      runInputsText: "",
+      runBusy: false,
+      runError: "",
+      currentRun: null,
+      runHistory: [],
+      runPollTimer: null,
+      runMarkedIds: [],
       catalogItems: [],
       catalogQuery: "",
       catalogLoading: false,
@@ -419,6 +517,7 @@ export default {
     this.prepareCondensedPrompts();
     this.fetchLlmOptions();
     this.fetchCatalog();
+    this.fetchRunHistory();
 
     const PipelineModule = {
       __init__: [
@@ -609,6 +708,7 @@ export default {
   },
 
   beforeDestroy: function() {
+    this.stopRunPolling();
     if (this.searchKeyHandler) {
       window.removeEventListener('keydown', this.searchKeyHandler);
       this.searchKeyHandler = null;
@@ -699,6 +799,147 @@ export default {
       }
     },
 
+    // ---- 로직 실행 ---------------------------------------------------------
+
+    async executeLogic() {
+      this.runError = "";
+      let inputs = {};
+      if (this.runInputsText.trim()) {
+        try {
+          inputs = JSON.parse(this.runInputsText);
+        } catch (e) {
+          this.runError = "입력값이 올바른 JSON 이 아닙니다.";
+          return;
+        }
+        if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) {
+          this.runError = "입력값은 { } 형태의 객체여야 합니다.";
+          return;
+        }
+      }
+
+      this.runBusy = true;
+      this.stopRunPolling();
+      try {
+        // 저장 전 편집 내용까지 실행되도록 현재 XML 을 함께 보낸다.
+        const { xml } = await this.bpmn.saveXML();
+        const resp = await ApiService.post("/pipelines/execute", { uid: this.id, xml, inputs });
+        this.currentRun = resp.data.data;
+        this.markRunSteps();
+        this.pollRun(this.currentRun.id);
+      } catch (error) {
+        const data = error && error.response && error.response.data;
+        this.runError = (data && data.error) || "실행 요청에 실패했습니다.";
+        this.runBusy = false;
+      }
+    },
+
+    pollRun(runId) {
+      const tick = async () => {
+        try {
+          const resp = await ApiService.get(`/pipelines/runs/${runId}`);
+          this.currentRun = resp.data.data;
+          this.markRunSteps();
+        } catch (e) {
+          this.runError = "실행 상태를 가져오지 못했습니다.";
+          this.runBusy = false;
+          return;
+        }
+        if (["succeeded", "failed"].includes(this.currentRun.status)) {
+          this.runBusy = false;
+          this.runPollTimer = null;
+          this.fetchRunHistory();
+          return;
+        }
+        this.runPollTimer = setTimeout(tick, 1000);
+      };
+      tick();
+    },
+
+    stopRunPolling() {
+      if (this.runPollTimer) {
+        clearTimeout(this.runPollTimer);
+        this.runPollTimer = null;
+      }
+    },
+
+    async loadRun(runId) {
+      this.stopRunPolling();
+      this.runBusy = false;
+      try {
+        const resp = await ApiService.get(`/pipelines/runs/${runId}`);
+        this.currentRun = resp.data.data;
+        this.markRunSteps();
+        if (!["succeeded", "failed"].includes(this.currentRun.status)) {
+          this.runBusy = true;
+          this.pollRun(runId);
+        }
+      } catch (e) {
+        this.runError = "실행 기록을 가져오지 못했습니다.";
+      }
+    },
+
+    async fetchRunHistory() {
+      if (!this.id) return;
+      try {
+        const resp = await ApiService.query("/pipelines/runs", { params: { diagram: this.id, limit: 10 } });
+        this.runHistory = resp.data.data || [];
+      } catch (e) {
+        this.runHistory = [];
+      }
+    },
+
+    /** 실행 결과를 캔버스 노드 색으로 표시한다. */
+    markRunSteps() {
+      if (!this.bpmn) return;
+      const canvas = this.bpmn.get("canvas");
+      const registry = this.bpmn.get("elementRegistry");
+      this.runMarkedIds.forEach((id) => {
+        if (registry.get(id)) {
+          ["run-marker--succeeded", "run-marker--failed", "run-marker--skipped"].forEach((m) => canvas.removeMarker(id, m));
+        }
+      });
+      const marked = [];
+      ((this.currentRun && this.currentRun.steps) || []).forEach((step) => {
+        if (registry.get(step.nodeId)) {
+          canvas.addMarker(step.nodeId, `run-marker--${step.status}`);
+          marked.push(step.nodeId);
+        }
+      });
+      this.runMarkedIds = marked;
+    },
+
+    focusElement(nodeId) {
+      const registry = this.bpmn.get("elementRegistry");
+      const element = registry.get(nodeId);
+      if (element) {
+        this.bpmn.get("selection").select(element);
+        this.bpmn.get("canvas").scrollToElement(element);
+      }
+    },
+
+    runStatusLabel(status) {
+      return { pending: "대기", running: "실행 중", succeeded: "성공", failed: "실패", skipped: "통과" }[status] || status;
+    },
+
+    formatDuration(ms) {
+      if (ms == null) return "";
+      return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+    },
+
+    formatTime(iso) {
+      if (!iso) return "";
+      const date = new Date(iso);
+      return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    },
+
+    hasKeys(value) {
+      return value && typeof value === "object" && Object.keys(value).length > 0;
+    },
+
+    prettyJson(value) {
+      return JSON.stringify(value, null, 2);
+    },
+
     addCatalogNode(item) {
       // 카탈로그 항목을 현재 다이어그램에 노드로 추가하고 메타데이터를 붙인다.
       try {
@@ -733,17 +974,10 @@ export default {
           modeling.updateProperties(created, { documentation: [documentation] });
         }
 
-        // 시뮬레이션이 호출할 수 있도록 실행 URL 을 확장 속성으로 붙인다.
+        // 실행 URL 과 입출력 규격을 확장 속성으로 붙인다.
         // (설명에만 적어두면 사람만 읽을 수 있고 실제로 호출되지 않는다)
-        if (payload.url) {
-          const parameter = moddle.create('pipeline:Parameter', {
-            name: item.label,
-            url: payload.url,
-          });
-          const parameters = moddle.create('pipeline:Parameters', { values: [parameter] });
-          const extensionElements = moddle.create('bpmn:ExtensionElements', {
-            values: [parameters],
-          });
+        const extensionElements = createCatalogExtension(moddle, item);
+        if (extensionElements) {
           modeling.updateProperties(created, { extensionElements });
         }
 
@@ -2187,6 +2421,67 @@ export default {
     font-size: 10px;
     color: #8a92a0;
   }
+
+  .run-inputs {
+    display: block;
+    margin-bottom: 8px;
+  }
+  .run-inputs__label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #5a6472;
+  }
+  .run-inputs__textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid #d5dae2;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .run-error { color: #c0392b; font-size: 12px; margin: 4px 0; }
+  .run-warning { color: #9a6700; font-size: 11px; }
+  .run-result { margin-top: 10px; }
+  .run-result__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .run-result__meta { font-size: 11px; color: #7a8290; }
+  .run-badge {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    background: #e5e7eb;
+    color: #374151;
+  }
+  .run-badge--succeeded { background: #dcfce7; color: #166534; }
+  .run-badge--failed { background: #fee2e2; color: #991b1b; }
+  .run-badge--running, .run-badge--pending { background: #dbeafe; color: #1e40af; }
+  .run-steps { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow-y: auto; }
+  .run-step { border-left: 3px solid #d1d5db; margin-bottom: 4px; background: #fff; }
+  .run-step--succeeded { border-left-color: #22c55e; }
+  .run-step--failed { border-left-color: #ef4444; }
+  .run-step summary { display: flex; gap: 6px; align-items: center; padding: 4px 6px; font-size: 12px; cursor: pointer; }
+  .run-step__seq { color: #9ca3af; min-width: 16px; }
+  .run-step__name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .run-step--skipped .run-step__name { color: #9ca3af; }
+  .run-step__meta { font-size: 10px; color: #9ca3af; }
+  .run-step__body { padding: 2px 8px 6px 28px; font-size: 11px; color: #374151; }
+  .run-step__row { margin-top: 3px; word-break: break-all; }
+  .run-step__row pre {
+    margin: 2px 0 0;
+    padding: 4px 6px;
+    background: #f6f8fa;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    max-height: 160px;
+    overflow-y: auto;
+  }
+  .run-history { margin-top: 10px; }
+  .djs-element.run-marker--succeeded .djs-visual > :nth-child(1) { stroke: #16a34a !important; stroke-width: 3px !important; }
+  .djs-element.run-marker--failed .djs-visual > :nth-child(1) { stroke: #dc2626 !important; stroke-width: 3px !important; }
 
   .layout-option {
     display: flex;

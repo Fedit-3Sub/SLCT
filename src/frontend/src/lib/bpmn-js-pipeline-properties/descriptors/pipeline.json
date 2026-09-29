@@ -14,15 +14,79 @@
         {
           "name": "values",
           "isMany": true,
-          "type": "Parameter"
+          "type": "Entry"
         }
       ]
-    },    
+    },
+    {
+      "name": "Entry",
+      "isAbstract": true,
+      "properties": [
+        {
+          "name": "name",
+          "isAttr": true,
+          "type": "String"
+        }
+      ]
+    },
     {
       "name": "Parameter",
+      "superClass": [ "Entry" ],
       "properties": [
         {
           "name": "pipeline",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
+          "name": "url",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
+          "name": "method",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
+          "name": "timeout",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
+          "name": "retry",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
+          "name": "delay",
+          "isAttr": true,
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "Input",
+      "superClass": [ "Entry" ],
+      "properties": [
+        {
+          "name": "source",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
+          "name": "value",
+          "isAttr": true,
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "Output",
+      "superClass": [ "Entry" ],
+      "properties": [
+        {
+          "name": "path",
           "isAttr": true,
           "type": "String"
         }

@@ -344,9 +344,14 @@ def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> st
             label = xml_escape(node["name"] or entry["name"])
             body.append("      <bpmn:extensionElements>")
             body.append("        <pipeline:parameters>")
+            method = f' method="{entry["method"]}"' if entry.get("method") else ""
             body.append(
-                f'          <pipeline:parameter name="{label}" url="{xml_escape(entry["url"])}" />'
+                f'          <pipeline:parameter name="{label}" url="{xml_escape(entry["url"])}"{method} />'
             )
+            # 입출력 규격도 함께 넣어 로직 실행기가 값을 이어 받도록 한다.
+            # 입력 값을 비워두면 같은 이름의 앞선 출력이 자동으로 연결된다.
+            body += [f'          <pipeline:input name="{xml_escape(n)}" />' for n in entry.get("inputs", [])]
+            body += [f'          <pipeline:output name="{xml_escape(n)}" />' for n in entry.get("outputs", [])]
             body.append("        </pipeline:parameters>")
             body.append("      </bpmn:extensionElements>")
 

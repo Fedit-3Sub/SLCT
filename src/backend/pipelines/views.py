@@ -5,6 +5,11 @@ from typing import List, Dict
 from django.db.models import Q
 from digitaltwins import catalog, fedit_client
 from digitaltwins.models import DigitalTwinSource
+from bpmns.models import BpmnDiagram
+
+from . import mock, runner
+from .engine import ModelError, parse
+from .models import PipelineRun
 
 
 class FedItScraperJsonView(APIView):
@@ -30,26 +35,105 @@ class FedItScraperJsonView(APIView):
 
 
 class PipelineRunView(APIView):
+    """카탈로그 모의 실행 경로(`/api/pipelines/run?id=...`).
+
+    토큰 시뮬레이션과 로직 실행기가 호출한다. 식별자에 정의된 출력 이름대로
+    모의 값을 채워 돌려준다(`_mock: true`).
+    """
+
     def post(self, request):
-        # Accept simulation trigger from the diagram token simulation
-        sim_id = request.query_params.get("id")
-        payload = request.data or {}
-        # Echo back minimal result
-        result = {
+        sim_id = request.query_params.get("id") or ""
+        payload = request.data if isinstance(request.data, dict) else {}
+        # 토큰 시뮬레이션은 {did, uid, object} 를 보내므로 입력값으로 보지 않는다.
+        inputs = {} if "object" in payload else payload
+        result = mock.outputs_for(sim_id, inputs)
+        result.update({
             "message": f"Pipeline run triggered for id={sim_id}",
             "received": payload,
             "status": "accepted",
-        }
+        })
         return Response({"data": result}, status=status.HTTP_200_OK)
 
     def get(self, request):
-        # Optional GET handler for testing
-        sim_id = request.query_params.get("id")
-        result = {
-            "message": f"Pipeline run (GET) for id={sim_id}",
-            "status": "ok",
-        }
+        sim_id = request.query_params.get("id") or ""
+        inputs = {k: v for k, v in request.query_params.items() if k != "id"}
+        result = mock.outputs_for(sim_id, inputs)
+        result.update({"message": f"Pipeline run (GET) for id={sim_id}", "status": "ok"})
         return Response({"data": result})
+
+
+class PipelineExecuteView(APIView):
+    """서비스 로직을 서버에서 실행한다.
+
+    본문
+      - uid:    저장된 다이어그램 식별자 (xml 이 없으면 이 다이어그램을 실행)
+      - xml:    실행할 BPMN XML (편집 중인 다이어그램을 저장 전에 실행할 때)
+      - inputs: 실행 입력값 {이름: 값}
+      - start:  시작 이벤트 id (생략하면 첫 프로세스의 시작 이벤트 전부)
+      - wait:   true 면 실행이 끝날 때까지 기다렸다가 결과를 돌려준다
+    """
+
+    def post(self, request):
+        body = request.data if isinstance(request.data, dict) else {}
+        uid = str(body.get("uid") or "").strip()
+        xml = body.get("xml") or ""
+        inputs = body.get("inputs") or {}
+        start = str(body.get("start") or "").strip()
+        wait = str(body.get("wait", "")).lower() in ("1", "true", "yes")
+
+        if not isinstance(inputs, dict):
+            return Response({"error": "inputs 는 객체여야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        diagram = BpmnDiagram.objects.filter(uid=uid).first() if uid else None
+        if not xml:
+            if diagram is None:
+                return Response({"error": "xml 또는 저장된 다이어그램의 uid 가 필요합니다."},
+                                status=status.HTTP_400_BAD_REQUEST)
+            xml = diagram.xml
+        if not isinstance(xml, str):
+            return Response({"error": "xml 은 문자열이어야 합니다."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 실행 기록을 만들기 전에 다이어그램을 해석할 수 있는지 먼저 확인한다.
+        try:
+            parse(xml)
+        except ModelError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        run = PipelineRun.objects.create(
+            diagram=diagram, diagram_uid=uid, xml=xml, inputs=inputs, start=start[:128],
+        )
+        if wait:
+            runner.execute(run)
+            return Response({"data": runner.serialize_run(run)}, status=status.HTTP_200_OK)
+
+        runner.execute_in_background(run.pk)
+        return Response({"data": runner.serialize_run(run, with_steps=False)}, status=status.HTTP_202_ACCEPTED)
+
+
+class PipelineRunListView(APIView):
+    """실행 기록 목록. `diagram=<uid>` 로 다이어그램별 조회."""
+
+    def get(self, request):
+        qs = PipelineRun.objects.all()
+        uid = request.query_params.get("diagram")
+        if uid:
+            qs = qs.filter(diagram_uid=uid)
+        try:
+            limit = max(1, min(int(request.query_params.get("limit", 20)), 200))
+        except ValueError:
+            limit = 20
+        items = [runner.serialize_run(r, with_steps=False) for r in qs[:limit]]
+        return Response({"data": items, "meta": {"count": len(items)}})
+
+
+class PipelineRunDetailView(APIView):
+    """실행 기록 하나와 단계별 입출력."""
+
+    def get(self, request, pk: int):
+        run = PipelineRun.objects.filter(pk=pk).first()
+        if run is None:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"data": runner.serialize_run(run)})
 
 
 # ---- Custom Nodes (External API Nodes) - Mocked Endpoints ----
@@ -116,7 +200,14 @@ class UnifiedSearchView(APIView):
                 "bpmn_type": item.get("bpmn_type", "bpmn:Task"),
                 "icon": item.get("icon", "bpmn-icon-task"),
                 "description": item.get("description", ""),
-                "payload": {"api_id": item.get("api_id"), "schema": item.get("schema", {})},
+                "payload": {
+                    "api_id": item.get("api_id"),
+                    "schema": item.get("schema", {}),
+                    # 로직 실행기·토큰 시뮬레이션이 호출할 실행 경로와 입출력 규격
+                    "url": f"{mock.MOCK_PATH}?id={item.get('api_id')}",
+                    "inputs": item.get("schema", {}).get("inputs", []),
+                    "outputs": item.get("schema", {}).get("outputs", []),
+                },
             }
             for item in custom
         ]
@@ -153,6 +244,7 @@ class UnifiedSearchView(APIView):
                     "source": origin,
                     "twinId": meta.get("twinId", ""),
                     "provider": meta.get("provider", ""),
+                    "method": meta.get("method", ""),
                     "inputs": meta.get("inputs", []),
                     "outputs": meta.get("outputs", []),
                 },

@@ -127,9 +127,37 @@ curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
 | Method | Path | 설명 |
 |--------|------|------|
 | GET | `/api/feditscraper/json` | 기존 Strapi가 반환하던 정적 엔티티 데이터 그대로 제공. |
-| GET/POST | `/api/pipelines/run` | 토큰 시뮬레이션 트리거(`?id=` 수신, 바디 에코). |
+| GET/POST | `/api/pipelines/run` | 카탈로그 모의 실행 경로. `?id=` 항목의 출력 이름대로 모의 값을 돌려준다(`_mock: true`). |
+| POST | `/api/pipelines/execute` | 서비스 로직 서버 실행. 본문 `{ "uid", "xml", "inputs", "start", "wait" }`. `xml` 이 없으면 저장된 `uid` 다이어그램을 실행. 기본은 비동기(202), `wait: true` 면 끝난 뒤 결과 반환. |
+| GET | `/api/pipelines/runs` | 실행 기록 목록. `?diagram=<uid>`, `?limit=` (기본 20). |
+| GET | `/api/pipelines/runs/:id` | 실행 기록과 노드별 입력·출력·요청·응답·경고. |
 | GET | `/api/custom-nodes` | 외부 API 노드 카탈로그(`?q=` 부분검색). |
 | GET | `/api/search` | 통합 검색. `?q=` 키워드, `?types=builtin,custom,digitaltwin` 필터. |
+
+#### 서비스 로직 실행기
+
+`pipelines/engine.py` 가 BPMN XML 을 서버에서 해석해 실행한다. 노드 호출 결과가 다음 노드의
+입력으로 넘어가고 분기 조건이 평가되며, 노드별 입출력은 `PipelineRun`/`PipelineStep` 에 기록된다.
+
+- 흐름: 순서 흐름·조건식·기본 흐름, 배타/병렬/포괄 게이트웨이, 하위 프로세스, 타이머 중간 이벤트(최대 60초 대기), 오류 경계 이벤트
+- 병렬 가지는 번갈아 처리한다(동시 호출 아님). 단계가 1000개를 넘으면 순환으로 보고 멈춘다.
+- 노드 설정은 `extensionElements` 의 `pipeline:parameters` 에서 읽는다.
+
+```xml
+<pipeline:parameters>
+  <pipeline:parameter url="/api/pipelines/run?id=tour-comfort" method="POST" timeout="30" retry="1" delay="0" />
+  <pipeline:input name="혼잡도" />                      <!-- 비우면 같은 이름의 앞선 값이 자동 연결 -->
+  <pipeline:input name="미세먼지" source="Task_1.PM10" /> <!-- 식 -->
+  <pipeline:input name="지역코드" value="47111" />        <!-- 고정 값 -->
+  <pipeline:output name="쾌적지수" path="data.index" />   <!-- 비우면 응답에서 같은 이름을 찾음 -->
+</pipeline:parameters>
+```
+
+- 식(조건·입력)은 파이썬 문법의 안전한 부분집합이다. `PM10 > 80 and 등급 == '나쁨'`, `Task_1["PM2.5"]`, `var("PM2.5")`.
+  `${...}` 감싸기와 `&&`·`||`·`===`·`true` 같은 JS 표기도 받는다.
+- URL 이 http(s) 면 그대로, `/api/pipelines/run` 이면 프로세스 안에서 모의 응답, 그 밖의 상대 경로는
+  `PIPELINE_BASE_URL`(기본 `http://127.0.0.1:1337`) 기준으로 호출한다.
+- 실행기는 다이어그램에 적힌 주소를 서버에서 호출하므로, 외부에 공개하는 배포에서는 접근 가능한 대상을 네트워크에서 제한할 것.
 
 **문서 · 관리자**
 

@@ -413,6 +413,9 @@ def all_entries() -> List[Dict[str, Any]]:
             "provider": item["provider"],
             "bpmn_type": "bpmn:ServiceTask",
             "twin_id": item["twin_id"],
+            "method": item.get("method", ""),
+            "inputs": item["inputs"],
+            "outputs": item["outputs"],
         }
         for item in SIMULATIONS
     ]
@@ -424,6 +427,9 @@ def all_entries() -> List[Dict[str, Any]]:
             "provider": "",
             "bpmn_type": item["bpmn_type"],
             "twin_id": "",
+            "method": "",
+            "inputs": item["inputs"],
+            "outputs": item["outputs"],
         }
         for item in SERVICES
     ]

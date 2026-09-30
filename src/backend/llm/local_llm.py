@@ -163,9 +163,31 @@ def is_enabled() -> bool:
     return os.environ.get("LOCAL_LLM_ENABLED", "1").strip().lower() not in ("0", "false", "no")
 
 
+def cpu_supported() -> bool:
+    """CPU 가 llama.cpp 사전 빌드 휠이 요구하는 AVX2 명령을 지원하는지.
+
+    가상머신이 기본 CPU 모델(QEMU Virtual CPU 등)로 떠 있으면 AVX 가 빠져 있어,
+    모델을 올리는 순간 잘못된 명령(SIGILL)으로 워커 프로세스가 죽는다.
+    예외로 잡을 수 없는 종료이므로 미리 확인해 규칙 기반 생성기로 넘긴다.
+    `LOCAL_LLM_FORCE=1` 이면 확인을 건너뛴다(직접 빌드한 런타임 등).
+    """
+    if os.environ.get("LOCAL_LLM_FORCE", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    try:
+        with open("/proc/cpuinfo") as fh:
+            for line in fh:
+                if line.startswith("flags"):
+                    return "avx2" in line.split(":", 1)[1].split()
+    except OSError:
+        return True  # /proc 이 없는 환경(macOS 등)은 판단하지 않는다.
+    return True
+
+
 def is_available() -> bool:
     """런타임(llama-cpp-python)과 모델 파일이 모두 준비됐는지."""
     if _load_failed or not is_enabled():
+        return False
+    if not cpu_supported():
         return False
     try:
         import llama_cpp  # noqa: F401
@@ -188,7 +210,8 @@ def status() -> Dict[str, Any]:
         "model_path": str(path) if path else None,
         "loaded": _model is not None,
         "threads": _env_int("LOCAL_LLM_THREADS", _physical_cores()),
-        "available": bool(runtime and path and not _load_failed and is_enabled()),
+        "cpu_supported": cpu_supported(),
+        "available": bool(runtime and path and not _load_failed and is_enabled() and cpu_supported()),
     }
 
 

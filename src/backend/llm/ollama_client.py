@@ -24,7 +24,10 @@ from .bpmn_spec import NODE_TYPES, parse_spec_json
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "http://localhost:11434"
+# 설정(LlmConfig)이 없거나 설정한 서버에 닿지 않을 때 쓰는 기본 Ollama 서버·모델.
+# 컨테이너 배포에서는 호스트에 띄운 Ollama 를 host.docker.internal 로 가리킨다.
+DEFAULT_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").strip() or "http://localhost:11434"
+DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
 
 # 임베딩 전용 모델은 대화 생성에 쓸 수 없으므로 목록에서 제외한다.
 EMBEDDING_HINTS = ("embed", "bge", "e5-", "gte-")
@@ -158,6 +161,8 @@ def pick_model(base_url: Optional[str] = None) -> str:
     models = list_models(base_url)
     if not models:
         return ""
+    if DEFAULT_MODEL and any(m["name"] == DEFAULT_MODEL for m in models):
+        return DEFAULT_MODEL
     running = set(list_running(base_url))
     warm = [m for m in models if m["name"] in running]
     if warm:

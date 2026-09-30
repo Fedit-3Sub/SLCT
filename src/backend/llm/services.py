@@ -91,6 +91,11 @@ def _select_engine(prompt: str, config: Optional[LlmConfig]) -> Dict[str, Any]:
         base_url = ollama_client.normalize_base_url(
             getattr(config, "base_url", "") if config is not None else ""
         )
+        if not ollama_client.is_reachable(base_url) and base_url != ollama_client.DEFAULT_BASE_URL:
+            # 고른 설정의 서버가 꺼져 있으면 기본 서버(OLLAMA_BASE_URL)로 넘어간다.
+            # 이때 설정의 모델은 기본 서버에 없을 수 있으므로 모델도 기본값으로 고른다.
+            logger.info("LLM 서버(%s)에 연결할 수 없어 기본 서버로 전환", base_url)
+            base_url, config = ollama_client.DEFAULT_BASE_URL, None
         if ollama_client.is_reachable(base_url):
             model = _resolve_ollama_model(config, base_url)
             if model:

@@ -238,3 +238,107 @@ class ExecuteApiTests(TestCase):
         resp = self.client.post("/api/pipelines/execute", {"xml": "<x/>"}, content_type="application/json")
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(PipelineRun.objects.count(), 0)
+
+
+FEDIT_ROW = {
+    "federated_digital_object_id": "KR-104111-0109",
+    "rowtime": "2026-09-30T02:25:04.204Z",
+    "data": {
+        "KR-104111-0024": {
+            "id": "urn:ngsi-ld:Atmosphere:KR-104111-0021",
+            "pm10": {"type": "Property", "value": 45.8, "observedAt": "2026-09-30T02:15:10.000Z"},
+            "temp": {"type": "Property", "value": 28.3, "observedAt": "2026-09-30T02:15:10.000Z"},
+            "location": {"type": "GeoProperty", "value": {"type": "Point", "coordinates": [0, 0]}},
+        },
+        "KR-104111-0025": {
+            "pm10": {"type": "Property", "value": 50.2},
+            "weatherMeasurement": [
+                {"date_time": "2025-11-03 06:00:00", "temperature": 8},
+                {"date_time": "2025-11-03 07:00:00", "temperature": 10, "sky_status": "1"},
+            ],
+        },
+    },
+}
+
+
+class BrainFlattenTests(SimpleTestCase):
+    def test_flatten_ngsi_ld_row(self):
+        from digitaltwins.brain import flatten_row
+        flat = flatten_row(FEDIT_ROW)
+        self.assertEqual(flat["pm10"], 48.0)                   # 두 디지털객체 평균
+        self.assertEqual(flat["KR-104111-0024.pm10"], 45.8)    # 전체 이름도 유지
+        self.assertEqual(flat["temp"], 28.3)
+        self.assertEqual(flat["temperature"], 10)              # 측정값 배열은 최근 시각 값
+        self.assertEqual(flat["observedAt"], "2026-09-30T02:15:10.000Z")
+
+
+def logic_diagram(end_inputs: str = "") -> str:
+    end = (f'<bpmn:endEvent id="E"><bpmn:extensionElements><pipeline:parameters>{end_inputs}'
+           '</pipeline:parameters></bpmn:extensionElements></bpmn:endEvent>') if end_inputs else '<bpmn:endEvent id="E"/>'
+    return diagram(
+        '<bpmn:startEvent id="S"/><bpmn:exclusiveGateway id="G" default="f_ok"/>'
+        + task("Alert", "/api/pipelines/run?id=notify.signage",
+               inputs='<pipeline:input name="표출문구" source="\'미세먼지 \' + str(pm10)"/>',
+               outputs='<pipeline:output name="표출상태"/>')
+        + end
+        + flow("f1", "S", "G") + flow("f_bad", "G", "Alert", "pm10 &gt; 40") + flow("f_ok", "G", "E")
+        + flow("f2", "Alert", "E")
+    )
+
+
+class LogicApiTests(TestCase):
+    def test_invoke_with_fedit_simulation_payload(self):
+        xml = logic_diagram('<pipeline:input name="경보" source="pm10 &gt; 40"/><pipeline:input name="pm10"/>')
+        BpmnDiagram.objects.create(uid="air", title="대기 경보", xml=xml)
+        body = {"simulation_id": "SIM1", "federated_digital_twin_id": "FDT1", "input_data": [FEDIT_ROW]}
+        resp = self.client.post("/api/logics/air/invoke", body, content_type="application/json")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()["data"]
+        self.assertEqual(data["result"], {"경보": True, "pm10": 48.0})
+        run = PipelineRun.objects.get(pk=data["runId"])
+        self.assertEqual(run.trigger, "fedit")
+        self.assertIn("Alert", [s.node_id for s in run.steps.all()])
+
+    def test_invoke_plain_json_and_failure(self):
+        BpmnDiagram.objects.create(uid="air2", xml=logic_diagram())
+        resp = self.client.post("/api/logics/air2/invoke", {"pm10": 10}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["result"]["pm10"], 10)   # 결과 정의가 없으면 전체 값
+        # pm10 이 없으면 조건을 거짓으로 보고 기본 흐름으로 간다
+        resp = self.client.post("/api/logics/air2/invoke", {}, content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.client.post("/api/logics/none/invoke", {}, content_type="application/json").status_code, 404)
+
+    def test_spec_lists_external_inputs_and_results(self):
+        xml = diagram(
+            '<bpmn:startEvent id="S"/>'
+            + task("A", "http://a", inputs='<pipeline:input name="지역코드"/>', outputs='<pipeline:output name="pm10"/>')
+            + task("B", "http://b", inputs='<pipeline:input name="pm10"/><pipeline:input name="기준" value="35"/>')
+            + '<bpmn:endEvent id="E"><bpmn:extensionElements><pipeline:parameters>'
+              '<pipeline:input name="등급" source="\'나쁨\' if pm10 &gt; 35 else \'보통\'"/>'
+              '</pipeline:parameters></bpmn:extensionElements></bpmn:endEvent>'
+            + flow("f1", "S", "A") + flow("f2", "A", "B") + flow("f3", "B", "E")
+        )
+        BpmnDiagram.objects.create(uid="spec1", title="대기 등급", xml=xml)
+        spec = self.client.get("/api/logics/spec1/spec").json()
+        post = spec["paths"]["/api/logics/spec1/invoke"]["post"]
+        self.assertEqual(list(post["requestBody"]["content"]["application/json"]["schema"]["properties"]), ["지역코드"])
+        result = post["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["properties"]["result"]
+        self.assertEqual(list(result["properties"]), ["등급"])
+        listing = self.client.get("/api/logics").json()["data"]
+        self.assertEqual(listing[0]["inputs"], ["지역코드"])
+
+    def test_fedit_registration_payload(self):
+        from unittest import mock
+        BpmnDiagram.objects.create(uid="reg", title="대기 경보", xml=logic_diagram())
+        with mock.patch("digitaltwins.brain.register_simulation", return_value={"simulation_id": "S9"}) as reg:
+            resp = self.client.post("/api/logics/reg/fedit",
+                                    {"fdt": "FDT1", "subjects": ["KR-104111-0109"], "timeStep": 2},
+                                    content_type="application/json", HTTP_HOST="slct.example.org")
+        self.assertEqual(resp.status_code, 201, resp.content)
+        fdt, payload = reg.call_args.args
+        self.assertEqual(fdt, "FDT1")
+        self.assertEqual(payload["simulation_access_url"], "http://slct.example.org/api/logics/reg/invoke")
+        self.assertEqual(payload["simulation_subject"], ["KR-104111-0109"])
+        self.assertEqual(payload["time_step"], 2)
+        self.assertEqual(BpmnDiagram.objects.get(uid="reg").metadata["fedit"]["fdt"], "FDT1")

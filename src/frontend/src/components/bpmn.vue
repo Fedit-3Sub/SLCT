@@ -345,6 +345,76 @@
       </section>
 
       <section class="bpmn-accordion">
+        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('publish'); if (accordionOpen.publish) loadLogicInfo()">
+          <span>로직 API · 연합트윈 연계</span>
+          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.publish }]">▼</span>
+        </button>
+        <div class="bpmn-accordion-body" v-show="accordionOpen.publish">
+          <p class="bpmn-ai-helper">
+            저장된 로직은 아래 주소로 호출할 수 있습니다. 연합트윈에 시뮬레이션으로 등록하면
+            Digital Brain 이 연합객체 데이터를 주기적으로 넣어 이 로직을 실행하고 결과를 저장합니다.
+          </p>
+          <p v-if="publishError" class="run-error">{{ publishError }}</p>
+          <template v-if="logicInfo">
+            <div class="publish-row">
+              <span class="publish-label">호출 주소</span>
+              <code class="publish-code">POST {{ logicInfo.invokeUrl }}</code>
+              <button type="button" class="publish-copy" @click="copyText(logicInfo.invokeUrl)">복사</button>
+            </div>
+            <div class="publish-row">
+              <span class="publish-label">API 문서</span>
+              <a :href="logicInfo.specUrl" target="_blank" rel="noopener" class="publish-link">OpenAPI 명세 열기</a>
+            </div>
+            <div class="publish-row">
+              <span class="publish-label">입력</span>
+              <span>{{ logicInfo.inputs.length ? logicInfo.inputs.join(', ') : '없음 (연합객체 데이터·노드 값으로 동작)' }}</span>
+            </div>
+            <div class="publish-row">
+              <span class="publish-label">결과</span>
+              <span>{{ logicInfo.outputs.length ? logicInfo.outputs.join(', ') : '전체 값 (종료 이벤트에 입력을 정의하면 결과로 반환)' }}</span>
+            </div>
+
+            <div class="catalog-group__label">연합트윈 시뮬레이션 등록</div>
+            <div v-if="feditStatus && feditStatus.registration" class="publish-registered">
+              등록됨: {{ feditStatus.registration.fdt }} · {{ feditStatus.registration.subjects.join(', ') }}
+              (주기 {{ feditStatus.registration.timeStep }})
+              <span v-if="feditStatus.remote && feditStatus.remote.length"> · Brain 확인됨</span>
+            </div>
+            <label class="publish-field">
+              <span>연합트윈</span>
+              <select v-model="feditForm.fdt" class="catalog-search">
+                <option value="" disabled>선택하세요</option>
+                <option v-for="twin in feditTwins" :key="twin.id" :value="twin.id">{{ twin.name }}</option>
+              </select>
+            </label>
+            <div v-if="feditForm.fdt" class="publish-objects">
+              <label v-for="obj in feditObjectsOf(feditForm.fdt)" :key="obj.fdo_id" class="publish-object">
+                <input type="checkbox" :value="obj.fdo_id" v-model="feditForm.subjects" />
+                <span>{{ obj.fdo_name }}</span>
+              </label>
+            </div>
+            <label class="publish-field">
+              <span>수집 주기(time_step)</span>
+              <input v-model.number="feditForm.timeStep" type="number" min="1" class="catalog-search" />
+            </label>
+            <div class="bpmn-ai-actions">
+              <button
+                class="bpmn-btn bpmn-btn--primary"
+                type="button"
+                :disabled="publishBusy || !feditForm.fdt || !feditForm.subjects.length"
+                @click="registerFedit"
+              >
+                {{ publishBusy ? '등록 중...' : '연합트윈에 등록' }}
+              </button>
+            </div>
+          </template>
+          <div class="bpmn-ai-actions">
+            <button class="bpmn-btn" type="button" @click="loadLogicInfo">새로고침</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="bpmn-accordion">
         <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('layout')">
           <span>레이아웃 최적화</span>
           <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.layout }]">▼</span>
@@ -460,8 +530,15 @@ export default {
         assistant: true,
         catalog: false,
         run: false,
+        publish: false,
         layout: false,
       },
+      logicInfo: null,
+      feditStatus: null,
+      feditObjects: [],
+      feditForm: { fdt: "", subjects: [], timeStep: 1 },
+      publishBusy: false,
+      publishError: "",
       runInputsText: "",
       runBusy: false,
       runError: "",
@@ -738,6 +815,13 @@ export default {
   },
 
   computed: {
+    feditTwins() {
+      const seen = new Map();
+      this.feditObjects.forEach((obj) => {
+        if (!seen.has(obj.fdt_id)) seen.set(obj.fdt_id, { id: obj.fdt_id, name: obj.fdt_name });
+      });
+      return [...seen.values()];
+    },
     // 카탈로그를 검색어로 거르고 분류별로 묶어 보여준다.
     filteredCatalog() {
       const query = this.catalogQuery.trim().toLowerCase();
@@ -797,6 +881,65 @@ export default {
       } catch (error) {
         console.warn('팔레트에 카탈로그를 반영하지 못했습니다.', error);
       }
+    },
+
+    // ---- 로직 API · 연합트윈 연계 -----------------------------------------
+
+    async loadLogicInfo() {
+      this.publishError = "";
+      try {
+        // 호출은 저장된 XML 로 실행되므로 편집 내용을 먼저 저장한다.
+        await this.saveDiagram();
+      } catch (e) {
+        // 저장 실패는 아래 조회 결과로 드러나므로 여기서는 넘어간다.
+      }
+      try {
+        const [logics, status, objects] = await Promise.all([
+          ApiService.get("/logics"),
+          ApiService.get(`/logics/${this.id}/fedit`),
+          ApiService.get("/fedit/objects"),
+        ]);
+        this.logicInfo = (logics.data.data || []).find((item) => item.uid === this.id) || null;
+        this.feditStatus = status.data.data;
+        this.feditObjects = objects.data.data || [];
+        if (!this.logicInfo) {
+          this.publishError = "저장된 로직을 찾지 못했습니다. 시작 이벤트가 있는지 확인하세요.";
+        }
+        const reg = this.feditStatus && this.feditStatus.registration;
+        if (reg) {
+          this.feditForm = { fdt: reg.fdt, subjects: [...reg.subjects], timeStep: reg.timeStep };
+        }
+      } catch (error) {
+        this.publishError = "로직 정보를 불러오지 못했습니다.";
+      }
+    },
+
+    feditObjectsOf(fdt) {
+      return this.feditObjects.filter((obj) => obj.fdt_id === fdt);
+    },
+
+    async registerFedit() {
+      const twin = this.feditTwins.find((t) => t.id === this.feditForm.fdt);
+      const ok = window.confirm(
+        `연합트윈 '${twin ? twin.name : this.feditForm.fdt}' 에 이 로직을 시뮬레이션으로 등록합니다.\n` +
+        "공용 Digital Brain 에 기록이 남습니다. 진행할까요?"
+      );
+      if (!ok) return;
+      this.publishBusy = true;
+      this.publishError = "";
+      try {
+        await ApiService.post(`/logics/${this.id}/fedit`, { ...this.feditForm });
+        await this.loadLogicInfo();
+      } catch (error) {
+        const data = error && error.response && error.response.data;
+        this.publishError = (data && data.error) || "등록에 실패했습니다.";
+      } finally {
+        this.publishBusy = false;
+      }
+    },
+
+    copyText(text) {
+      if (navigator.clipboard) navigator.clipboard.writeText(text);
     },
 
     // ---- 로직 실행 ---------------------------------------------------------
@@ -2421,6 +2564,17 @@ export default {
     font-size: 10px;
     color: #8a92a0;
   }
+
+  .publish-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 4px 0; font-size: 12px; }
+  .publish-label { min-width: 56px; font-weight: 700; color: #5a6472; }
+  .publish-code { flex: 1; min-width: 0; font-size: 11px; background: #f6f8fa; padding: 2px 4px; border-radius: 4px; word-break: break-all; }
+  .publish-copy { font-size: 11px; border: 1px solid #d5dae2; border-radius: 4px; padding: 0 6px; background: #fff; cursor: pointer; }
+  .publish-link { color: #2563eb; }
+  .publish-field { display: block; margin: 6px 0; font-size: 12px; }
+  .publish-field > span { display: block; margin-bottom: 2px; color: #5a6472; font-weight: 700; font-size: 11px; }
+  .publish-objects { max-height: 160px; overflow-y: auto; border: 1px solid #e2e6ec; border-radius: 6px; padding: 4px 6px; }
+  .publish-object { display: flex; gap: 6px; align-items: center; font-size: 12px; padding: 2px 0; }
+  .publish-registered { font-size: 12px; color: #166534; background: #dcfce7; border-radius: 6px; padding: 4px 6px; margin: 4px 0; }
 
   .run-inputs {
     display: block;

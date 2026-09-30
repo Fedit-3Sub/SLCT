@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from . import catalog, fedit_client
+from . import brain, catalog, fedit_client
 from .models import DigitalTwinSource, DigitalTwinCallLog
 from .serializers import DigitalTwinSourceSerializer, DigitalTwinCallLogSerializer
 import time
@@ -94,3 +94,47 @@ class DigitalTwinCallView(APIView):
             duration_ms=duration_ms,
         )
         return Response({"data": {"ok": True, "logId": log.id}})
+
+
+# ---- 연합트윈 Digital Brain 실데이터 ----------------------------------------
+
+class FeditObjectListView(APIView):
+    """데이터가 들어오는 연합객체 목록과 각 객체의 측정값 이름."""
+
+    def get(self, request):
+        refresh = request.query_params.get("refresh") in ("1", "true")
+        items = brain.object_catalog(refresh=refresh)
+        return Response({"data": items, "meta": {"count": len(items), "brain": brain.base_url()}})
+
+
+class FeditObjectLatestView(APIView):
+    """연합객체 최신 데이터를 평평한 이름(`pm10`, `temp` …)으로 돌려준다."""
+
+    def get(self, request):
+        fdt = request.query_params.get("fdt", "").strip()
+        fdo = request.query_params.get("fdo", "").strip()
+        if not fdt or not fdo:
+            return Response({"error": "fdt, fdo 는 필수입니다."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            return Response({"data": brain.latest(fdt, fdo)})
+        except brain.BrainError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+class FeditObjectSeriesView(APIView):
+    """연합객체 속성 하나의 최근 값과 최솟값·최댓값·평균."""
+
+    def get(self, request):
+        fdt = request.query_params.get("fdt", "").strip()
+        fdo = request.query_params.get("fdo", "").strip()
+        prop = request.query_params.get("property", "").strip()
+        if not fdt or not fdo or not prop:
+            return Response({"error": "fdt, fdo, property 는 필수입니다."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            count = int(request.query_params.get("count", 24))
+        except ValueError:
+            count = 24
+        try:
+            return Response({"data": brain.series(fdt, fdo, prop, count)})
+        except brain.BrainError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)

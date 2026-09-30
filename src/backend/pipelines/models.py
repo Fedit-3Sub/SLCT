@@ -44,6 +44,11 @@ class PipelineRun(models.Model):
     diagram_uid = models.CharField("다이어그램 식별자", max_length=64, blank=True, db_index=True)
     xml = models.TextField("실행한 BPMN XML")
     start = models.CharField("시작 이벤트", max_length=128, blank=True)
+    trigger = models.CharField(
+        "실행 경로", max_length=16, default="editor",
+        help_text="editor: 편집기 실행, api: 로직 API 호출, fedit: 연합트윈 시뮬레이션 호출",
+    )
+    result = models.JSONField("결과", null=True, blank=True)
     status = models.CharField("상태", max_length=16, choices=STATUS_CHOICES, default="pending", db_index=True)
     inputs = models.JSONField("입력값", default=dict, blank=True)
     variables = models.JSONField("최종 값", default=dict, blank=True)

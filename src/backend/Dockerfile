@@ -38,4 +38,4 @@ EXPOSE 1337
 
 # 로직 실행은 요청을 받은 워커 안의 스레드에서 돌므로, 긴 실행 중에도 워커가
 # 다른 요청을 받도록 스레드 워커를 쓴다.
-CMD sh -c "python manage.py migrate --noinput && gunicorn --workers 2 --threads 4 --timeout 300 --bind 0.0.0.0:1337 core.wsgi:application"
+CMD sh -c "python manage.py migrate --noinput && python manage.py load_samples && gunicorn --workers 2 --threads 4 --timeout 300 --bind 0.0.0.0:1337 core.wsgi:application"

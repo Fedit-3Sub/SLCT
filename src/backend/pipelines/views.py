@@ -3,7 +3,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from typing import List, Dict
 from django.db.models import Q
-from digitaltwins import catalog, fedit_client
+from urllib.parse import urlencode
+
+from digitaltwins import brain, catalog, fedit_client
 from digitaltwins.models import DigitalTwinSource
 from bpmns.models import BpmnDiagram
 
@@ -251,16 +253,60 @@ class UnifiedSearchView(APIView):
             })
         return out
 
+    def _fedit_objects(self) -> List[Dict]:
+        """Digital Brain 연합객체를 실데이터 조회 노드로 내놓는다."""
+        out = []
+        for item in brain.object_catalog():
+            query = urlencode({"fdt": item["fdt_id"], "fdo": item["fdo_id"]})
+            out.append({
+                "id": f"fedit::{item['fdt_id']}::{item['fdo_id']}",
+                "label": f"{item['fdo_name']} 최신 데이터",
+                "category": f"연합트윈 실데이터 · {item['fdt_name']}",
+                "bpmn_type": "bpmn:ServiceTask",
+                "icon": "bpmn-icon-service-task",
+                "description": f"[{item['fdt_name']}] {item['fdo_name']} 연합객체의 최신 동기화 데이터 (최근 {item.get('rowtime') or '-'})",
+                "payload": {
+                    "url": f"/api/fedit/objects/latest?{query}",
+                    "method": "GET",
+                    "source": "fedit-brain",
+                    "twinId": item["fdt_id"],
+                    "provider": "연합트윈 Digital Brain",
+                    "inputs": [],
+                    "outputs": item["outputs"],
+                },
+            })
+        if out:
+            # 속성 하나의 추세가 필요할 때 쓰는 범용 시계열 노드
+            out.append({
+                "id": "fedit::series",
+                "label": "연합객체 시계열 요약",
+                "category": "연합트윈 실데이터 · 공통",
+                "bpmn_type": "bpmn:ServiceTask",
+                "icon": "bpmn-icon-service-task",
+                "description": "연합객체 속성 하나의 최근 값 목록과 최솟값·최댓값·평균",
+                "payload": {
+                    "url": "/api/fedit/objects/series",
+                    "method": "GET",
+                    "source": "fedit-brain",
+                    "provider": "연합트윈 Digital Brain",
+                    "inputs": ["fdt", "fdo", "property", "count"],
+                    "outputs": ["latest", "min", "max", "avg", "count"],
+                },
+            })
+        return out
+
     def get(self, request):
         q = (request.query_params.get("q") or "").strip().lower()
         types = (request.query_params.get("types") or "").strip().lower()
-        type_set = {t for t in types.split(",") if t} if types else {"builtin", "custom", "digitaltwin"}
+        type_set = {t for t in types.split(",") if t} if types else {"builtin", "custom", "digitaltwin", "fedit"}
 
         data: List[Dict] = []
         if "builtin" in type_set:
             data.extend(self._builtin_nodes())
         if "custom" in type_set:
             data.extend(self._custom_nodes())
+        if "fedit" in type_set:
+            data.extend(self._fedit_objects())
         if "digitaltwin" in type_set:
             data.extend(self._digital_twins())
 

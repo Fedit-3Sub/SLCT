@@ -1,3 +1,9 @@
+# 앞단 역방향 프록시(TLS 종료)가 준 원래 스킴을 백엔드까지 전달한다.
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
 server {
     listen 9900;
     server_name _;
@@ -10,7 +16,7 @@ server {
         proxy_pass ${BACKEND_URL};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
         # 코파일럿(내장 LLM) 응답이 수십 초 걸릴 수 있다.
         proxy_read_timeout 300s;
     }

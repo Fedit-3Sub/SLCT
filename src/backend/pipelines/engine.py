@@ -402,6 +402,8 @@ class RunResult:
     nodes: Dict[str, Dict[str, Any]]
     steps: List[StepRecord]
     error: str = ""
+    # 종료 이벤트에 입력(결과 정의)을 둔 경우 그 값. 로직을 API 로 호출했을 때의 응답 본문이다.
+    result: Optional[Dict[str, Any]] = None
 
 
 def _now() -> str:
@@ -429,13 +431,16 @@ class Engine:
     def run(self, xml: str, inputs: Optional[Mapping[str, Any]] = None, start: str = "") -> RunResult:
         self.ctx = Context(inputs)
         self.steps: List[StepRecord] = []
+        self.result: Optional[Dict[str, Any]] = None
+        self._root_scope_id = ""
         try:
             scopes = parse(xml)
             scope, starts = self._select_start(scopes, start)
+            self._root_scope_id = scope.id
             self._run_scope(scope, starts)
         except (ExecutionError, ModelError) as exc:
-            return RunResult("failed", self.ctx.variables, self.ctx.nodes, self.steps, str(exc))
-        return RunResult("succeeded", self.ctx.variables, self.ctx.nodes, self.steps)
+            return RunResult("failed", self.ctx.variables, self.ctx.nodes, self.steps, str(exc), self.result)
+        return RunResult("succeeded", self.ctx.variables, self.ctx.nodes, self.steps, result=self.result)
 
     def _select_start(self, scopes: List[Scope], start: str) -> Tuple[Scope, List[Node]]:
         if start:
@@ -566,6 +571,8 @@ class Engine:
             step.inputs = self._resolve_inputs(node, step)
             self.ctx.set_outputs(node.id, step.inputs)
             step.outputs = dict(step.inputs)
+            if node.type == "endEvent" and scope.id == self._root_scope_id:
+                self.result = {**(self.result or {}), **step.outputs}
         elif node.type in TASK_TAGS:
             step.status = "skipped"
             step.warnings.append("실행 URL 이 없어 통과합니다.")
@@ -668,3 +675,32 @@ class Engine:
             self.ctx.set_outputs(node.id, outputs)
             return
         raise ExecutionError(last_error or "호출에 실패했습니다.")
+
+
+def describe_interface(xml: str) -> Dict[str, List[str]]:
+    """로직을 API 로 공개할 때의 입력·출력 이름.
+
+    - inputs:  노드 입력 중 값 식·고정 값이 없고 앞선 노드 출력으로도 채워지지 않는 이름
+               (호출하는 쪽이 넘겨야 하는 값)
+    - outputs: 최상위 종료 이벤트에 정의한 결과 이름. 없으면 빈 목록(모든 값이 응답에 담김)
+    """
+    scopes = parse(xml)
+    produced: set = set()
+    wanted: List[str] = []
+    result: List[str] = []
+
+    def visit(scope: Scope, top: bool) -> None:
+        for node in scope.nodes.values():
+            produced.update(o.name for o in node.config.outputs)
+            if node.type in TASK_TAGS | {"endEvent"} and not node.config.url:
+                produced.update(i.name for i in node.config.inputs)  # 값 가공 노드
+            for spec in node.config.inputs:
+                if not spec.source and (spec.value is None or spec.value == "") and spec.name not in wanted:
+                    wanted.append(spec.name)
+            if top and node.type == "endEvent":
+                result.extend(i.name for i in node.config.inputs if i.name not in result)
+            if node.scope is not None:
+                visit(node.scope, False)
+
+    visit(scopes[0], True)
+    return {"inputs": [n for n in wanted if n not in produced], "outputs": result}

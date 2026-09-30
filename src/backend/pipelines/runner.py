@@ -72,12 +72,13 @@ def execute(run: PipelineRun) -> PipelineRun:
         run.status = result.status
         run.error = result.error
         run.variables = _fit(result.variables)
+        run.result = _fit(result.result) if result.result is not None else None
     except Exception as exc:  # 실행기 버그라도 기록은 끝맺는다.
         logger.exception("로직 실행 중 예기치 않은 오류 (run=%s)", run.pk)
         run.status = "failed"
         run.error = f"실행기 내부 오류: {exc}"
     run.finished_at = timezone.now()
-    run.save(update_fields=["status", "error", "variables", "finished_at"])
+    run.save(update_fields=["status", "error", "variables", "result", "finished_at"])
     return run
 
 
@@ -118,9 +119,11 @@ def serialize_run(run: PipelineRun, with_steps: bool = True) -> Dict[str, Any]:
         "id": run.pk,
         "diagramUid": run.diagram_uid,
         "status": run.status,
+        "trigger": run.trigger,
         "start": run.start,
         "inputs": run.inputs,
         "variables": run.variables,
+        "result": run.result,
         "error": run.error,
         "createdAt": run.created_at.isoformat() if run.created_at else None,
         "startedAt": run.started_at.isoformat() if run.started_at else None,

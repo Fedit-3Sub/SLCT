@@ -20,6 +20,9 @@ services:
       # 외부 LLM 서버가 없으면 내장 CPU LLM → 규칙 기반 순으로 응답한다.
       OLLAMA_ENABLED: ${OLLAMA_ENABLED:-0}
       FEDIT_META_TOKEN: ${FEDIT_META_TOKEN:-}
+      FEDIT_BRAIN_URL: ${FEDIT_BRAIN_URL:-http://220.124.222.84:1213}
+      # 연합트윈이 로직을 호출할 외부 주소(역방향 프록시 도메인)
+      SLCT_PUBLIC_URL: ${SLCT_PUBLIC_URL:-}
     volumes:
       - backend-data:/opt/app/data
     ports:

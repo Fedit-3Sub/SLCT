@@ -159,6 +159,23 @@ curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
   `PIPELINE_BASE_URL`(기본 `http://127.0.0.1:1337`) 기준으로 호출한다.
 - 실행기는 다이어그램에 적힌 주소를 서버에서 호출하므로, 외부에 공개하는 배포에서는 접근 가능한 대상을 네트워크에서 제한할 것.
 
+#### 연합트윈 실데이터 · 로직 API
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/api/fedit/objects` | Digital Brain 에서 데이터가 들어오는 연합객체 목록과 측정값 이름(10분 캐시, `?refresh=1`). |
+| GET | `/api/fedit/objects/latest?fdt=&fdo=` | 연합객체 최신 데이터를 평평한 이름(`pm10`, `temp` …)으로. 디지털객체별 전체 이름(`KR-104111-0024.pm10`)도 함께. |
+| GET | `/api/fedit/objects/series?fdt=&fdo=&property=&count=` | 속성 하나의 최근 값과 최솟값·최댓값·평균. |
+| GET | `/api/logics` | 공개 가능한 로직 목록(호출 주소, 입력·결과 이름, 연합트윈 등록 정보). |
+| POST | `/api/logics/:uid/invoke` | 저장된 로직 실행(동기). 본문이 입력값. 연합트윈 시뮬레이션 호출 형식(`input_data`)이면 연합객체 데이터를 평평하게 풀어 입력으로 쓴다. 응답 `{data:{runId,status,result}}`. |
+| GET | `/api/logics/:uid/spec` | 로직 API 의 OpenAPI 3 문서(다이어그램에서 자동 생성). |
+| GET/POST | `/api/logics/:uid/fedit` | 연합트윈 시뮬레이션 등록 상태 조회 / 등록(`{fdt, subjects, timeStep}`). 등록하면 Digital Brain 이 대상 연합객체 데이터를 주기적으로 invoke 주소에 보내고 응답을 결과로 저장한다. |
+
+- 종료 이벤트에 입력을 정의하면 그 값이 로직의 결과(API 응답)가 된다. 없으면 실행 중 만든 값 전체를 돌려준다.
+- 연합트윈이 호출할 외부 주소는 `SLCT_PUBLIC_URL`(예: `https://slct.k-sw.org`)로 지정한다. 없으면 요청 주소로 만든다.
+- Digital Brain 주소는 `FEDIT_BRAIN_URL`(기본 `http://220.124.222.84:1213`).
+- 예제 로직: `python manage.py load_samples` → 편집기에서 `/pohang-air-alert` (포항 대기 실데이터로 등급·경보 판정).
+
 **문서 · 관리자**
 
 | Path | 설명 |

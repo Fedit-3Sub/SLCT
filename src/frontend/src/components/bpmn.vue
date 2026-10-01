@@ -483,7 +483,6 @@ import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 import CatalogPaletteModule from '@/lib/bpmn-js-catalog-palette';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
 import ApiService from "@/common/api.service";
-import parse from 'url-parse';
 import { layoutProcess } from 'bpmn-auto-layout';
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || 'alpha';
@@ -567,6 +566,13 @@ export default {
       runHistory: [],
       runPollTimer: null,
       runMarkedIds: [],
+      simToken: null,
+      simSteps: null,
+      simPending: false,
+      simError: "",
+      simSeen: {},
+      simWaiting: {},
+      simMarked: [],
       replayTimer: null,
       catalogItems: [],
       catalogNotice: "",
@@ -641,53 +647,21 @@ export default {
             self.selectedElementName = (element.businessObject && element.businessObject.name) || element.id;
             self.activeTab = 'props';
           });
-          eventBus.on('tokenSimulation.playSimulation', (event) => {
-            console.log("tokenSimulation.playSimulation", event);
-            self.process = null;
-            self.processUrl = null;
+          // 시뮬레이션 모드: 켜는 순간 서버가 현재 다이어그램을 실데이터로 한 번 실행하고,
+          // 토큰이 노드에 들어갈 때마다 그 노드에서 실제로 오간 값을 꼬리표로 보여준다.
+          // (예전에는 브라우저가 노드 URL 을 직접 호출했는데, 서버의 외부 쓰기 차단을
+          //  우회할 수 있어 없앴다. 실제 호출은 서버 실행기만 한다.)
+          eventBus.on('tokenSimulation.toggleMode', (event) => {
+            if (event.active) self.startSimulationRun();
+            else self.clearSimulationRun();
           });
-          eventBus.on('tokenSimulation.resetSimulation', (event) => {
-            console.log("tokenSimulation.resetSimulation", event);
+          eventBus.on('tokenSimulation.resetSimulation', () => {
+            self.clearSimulationBadges();
           });
           eventBus.on('tokenSimulation.simulator.trace', (event) => {
-            const { action, scope, element } = event;
-            const parameters = GetPipelineParameters(element);
-            const { url, businessObject } = parameters;
-
-            console.log("tokenSimulation.simulator.trace", action, event);
-            if(action != 'signal' && action != 'enter') {
-              return;
-            }
-
-            if(is(element, 'bpmn:Process')) {
-              self.process = element;
-              return;
-            }
-            if(is(element, 'bpmn:StartEvent')) {
-              self.processUrl = url;
-            }
-
-            if(url) {
-              var endpoint = url;
-              var pat = /^https?:\/\//i;
-              if (!pat.test(url))
-              {
-                console.log(self.processUrl, parse(self.processUrl, true));
-                console.log(url, parse(url, true));
-                var a = parse(self.processUrl, true);
-                var b = parse(url, true);
-                a.pathname = b.pathname;
-                a.query = {...a.query, ...b.query}
-                endpoint = a.toString();
-              }
-              console.log("url", endpoint, businessObject);
-              const object = {
-                id: businessObject['id'],
-                type: businessObject['$type'],
-                url,
-              }
-              axios.post(endpoint, { uid: scope.parent ? scope.parent.id : scope.id, did: self.id, object });
-            }
+            const { action, element } = event;
+            if (action !== 'enter' || !element || is(element, 'bpmn:Process')) return;
+            self.showSimulationValue(element);
           });
         } ]
       ],
@@ -985,6 +959,113 @@ export default {
 
     copyText(text) {
       if (navigator.clipboard) navigator.clipboard.writeText(text);
+    },
+
+    // ---- 시뮬레이션 모드 실데이터 표시 ------------------------------------
+
+    /** 시뮬레이션 모드를 켜면 서버에서 실데이터로 한 번 실행해 둔다. */
+    async startSimulationRun() {
+      this.clearSimulationRun();
+      const token = (this.simToken = Symbol('sim'));
+      let inputs = {};
+      try { inputs = this.runInputsText.trim() ? JSON.parse(this.runInputsText) : {}; } catch (e) { inputs = {}; }
+      this.simPending = true;
+      try {
+        let run;
+        if (this.editable) {
+          const { xml } = await this.bpmn.saveXML();
+          run = (await ApiService.post('/pipelines/execute', { xml, inputs, wait: true })).data.data;
+        } else {
+          const runId = (await ApiService.post(`/logics/${this.id}/invoke`, inputs)).data.data.runId;
+          run = (await ApiService.get(`/pipelines/runs/${runId}`)).data.data;
+        }
+        if (token !== this.simToken) return; // 그 사이 모드를 끄거나 다시 켬
+        this.simSteps = {};
+        (run.steps || []).forEach((step) => {
+          (this.simSteps[step.nodeId] = this.simSteps[step.nodeId] || []).push(step);
+        });
+        this.currentRun = run;
+        this.syncSimulationGateways(run);
+        // 결과보다 먼저 도착한 토큰의 '조회 중' 꼬리표를 실제 값으로 바꾼다.
+        Object.keys(this.simWaiting).forEach((id) => this.showSimulationValue(this.bpmn.get('elementRegistry').get(id)));
+      } catch (error) {
+        const data = error && error.response && error.response.data;
+        this.simError = (data && (data.error || (data.data && data.data.error))) || '실데이터 실행에 실패했습니다.';
+      } finally {
+        if (token === this.simToken) this.simPending = false;
+      }
+    },
+
+    /** 서버 실행이 고른 흐름으로 배타 게이트웨이의 토큰 방향을 맞춘다. */
+    syncSimulationGateways(run) {
+      try {
+        const registry = this.bpmn.get('elementRegistry');
+        const simulator = this.bpmn.get('simulator');
+        const settings = this.bpmn.get('exclusiveGatewaySettings');
+        (run.steps || []).forEach((step) => {
+          if (step.nodeType !== 'exclusiveGateway' || !(step.flows || []).length) return;
+          const gateway = registry.get(step.nodeId);
+          const wanted = registry.get(step.flows[0]);
+          if (!gateway || !wanted) return;
+          for (let i = 0; i < gateway.outgoing.length + 1; i += 1) {
+            const active = simulator.getConfig(gateway).activeOutgoing;
+            if (active && active.id === wanted.id) break;
+            settings.setSequenceFlow(gateway); // 다음 흐름으로 돌리며 색도 함께 바뀐다
+          }
+        });
+      } catch (e) {
+        // 게이트웨이 맞추기는 보조 기능이라 실패해도 시뮬레이션은 계속된다.
+      }
+    },
+
+    showSimulationValue(element) {
+      if (!element || !this.bpmn) return;
+      const overlays = this.bpmn.get('overlays');
+      const canvas = this.bpmn.get('canvas');
+      overlays.remove({ element: element.id, type: 'sim-value' });
+      const steps = this.simSteps && this.simSteps[element.id];
+      let text = '';
+      let status = 'succeeded';
+      if (steps && steps.length) {
+        const step = steps[Math.min((this.simSeen[element.id] || 0), steps.length - 1)];
+        this.simSeen[element.id] = (this.simSeen[element.id] || 0) + 1;
+        delete this.simWaiting[element.id];
+        text = this.stepBadge(step);
+        status = step.status;
+        canvas.addMarker(element.id, `run-marker--${step.status}`);
+        this.simMarked.push(element.id);
+      } else if (this.simPending) {
+        this.simWaiting[element.id] = true;
+        text = '조회 중…';
+        status = 'pending';
+      }
+      if (!text) return;
+      const badge = document.createElement('div');
+      badge.className = `run-value run-value--${status}`;
+      badge.textContent = text;
+      badge.title = text;
+      overlays.add(element.id, 'sim-value', { position: { bottom: -6, left: 0 }, html: badge });
+    },
+
+    clearSimulationBadges() {
+      if (!this.bpmn) return;
+      this.bpmn.get('overlays').remove({ type: 'sim-value' });
+      const canvas = this.bpmn.get('canvas');
+      const registry = this.bpmn.get('elementRegistry');
+      this.simMarked.forEach((id) => {
+        if (registry.get(id)) ['run-marker--succeeded', 'run-marker--failed', 'run-marker--skipped'].forEach((m) => canvas.removeMarker(id, m));
+      });
+      this.simMarked = [];
+      this.simSeen = {};
+      this.simWaiting = {};
+    },
+
+    clearSimulationRun() {
+      this.simToken = null;
+      this.simSteps = null;
+      this.simPending = false;
+      this.simError = '';
+      this.clearSimulationBadges();
     },
 
     // ---- 로직 실행 ---------------------------------------------------------
@@ -2895,6 +2976,7 @@ export default {
   }
   .run-value--failed { background: #b91c1c; }
   .run-value--skipped { background: #6b7280; }
+  .run-value--pending { background: #1e40af; }
   @keyframes run-value-in { from { opacity: 0; transform: translateY(80%); } to { opacity: 1; transform: translateY(100%); } }
   .djs-element.run-marker--succeeded .djs-visual > :nth-child(1) { stroke: #16a34a !important; stroke-width: 3px !important; }
   .djs-element.run-marker--failed .djs-visual > :nth-child(1) { stroke: #dc2626 !important; stroke-width: 3px !important; }

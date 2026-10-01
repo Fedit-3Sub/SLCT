@@ -342,3 +342,53 @@ class LogicApiTests(TestCase):
         self.assertEqual(payload["simulation_subject"], ["KR-104111-0109"])
         self.assertEqual(payload["time_step"], 2)
         self.assertEqual(BpmnDiagram.objects.get(uid="reg").metadata["fedit"]["fdt"], "FDT1")
+
+
+class EntryAndInputTests(SimpleTestCase):
+    def test_plain_start_events_take_priority(self):
+        body = (
+            '<bpmn:startEvent id="Timer"><bpmn:timerEventDefinition/></bpmn:startEvent>'
+            '<bpmn:startEvent id="Plain"/>'
+            + task("A", "http://a") + task("B", "http://b")
+            + flow("f1", "Timer", "A") + flow("f2", "Plain", "B")
+        )
+        result, invoker = run(diagram(body), {"http://a": {}, "http://b": {}})
+        self.assertEqual([c[0] for c in invoker.calls], ["http://b"])
+
+    def test_inputs_see_earlier_inputs_and_defaults(self):
+        body = (
+            '<bpmn:startEvent id="S"/>'
+            + task("Calc", inputs='<pipeline:input name="a" source="var(\'x\', 10) * 2"/>'
+                                  '<pipeline:input name="b" source="a + 1"/>', tag="task")
+            + flow("f1", "S", "Calc")
+        )
+        result, _ = run(diagram(body), {})
+        self.assertEqual(result.status, "succeeded", result.error)
+        self.assertEqual((result.variables["a"], result.variables["b"]), (20, 21))
+
+
+class EditTokenTests(TestCase):
+    def setUp(self):
+        from unittest import mock
+        patcher = mock.patch.dict("os.environ", {"SLCT_EDIT_TOKEN": "secret-token"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        BpmnDiagram.objects.create(uid="open", xml=logic_diagram())
+
+    def test_reads_public_writes_need_token(self):
+        new = {"data": {"uid": "t1", "xml": logic_diagram()}}
+        self.assertEqual(self.client.get("/api/bpmns").status_code, 200)
+        self.assertEqual(self.client.post("/api/bpmns", new, content_type="application/json").status_code, 403)
+        self.assertEqual(self.client.post("/api/bpmns", new, content_type="application/json",
+                                          HTTP_X_SLCT_TOKEN="wrong").status_code, 403)
+        self.assertEqual(self.client.post("/api/bpmns", new, content_type="application/json",
+                                          HTTP_X_SLCT_TOKEN="secret-token").status_code, 201)
+        self.assertEqual(self.client.post("/api/pipelines/execute?token=secret-token", {"uid": "open", "wait": True},
+                                          content_type="application/json").status_code, 200)
+        self.assertEqual(self.client.post("/api/pipelines/execute", {"uid": "open"},
+                                          content_type="application/json").status_code, 403)
+
+    def test_invoke_stays_public_and_check_endpoint(self):
+        self.assertEqual(self.client.post("/api/logics/open/invoke", {}, content_type="application/json").status_code, 200)
+        self.assertEqual(self.client.get("/api/auth/edit").json()["data"], {"required": True, "editable": False})
+        self.assertEqual(self.client.get("/api/auth/edit", HTTP_X_SLCT_TOKEN="secret-token").json()["data"]["editable"], True)

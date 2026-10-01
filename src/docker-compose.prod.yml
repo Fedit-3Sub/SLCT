@@ -26,6 +26,8 @@ services:
       FEDIT_BRAIN_URL: ${FEDIT_BRAIN_URL:-http://220.124.222.84:1213}
       # 연합트윈이 로직을 호출할 외부 주소(역방향 프록시 도메인)
       SLCT_PUBLIC_URL: ${SLCT_PUBLIC_URL:-}
+      # 편집 토큰. 설정하면 조회는 공개, 수정·실행은 ?token= 으로 접속한 사람만 가능
+      SLCT_EDIT_TOKEN: ${SLCT_EDIT_TOKEN:-}
     volumes:
       - backend-data:/opt/app/data
     ports:

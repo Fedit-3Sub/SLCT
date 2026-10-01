@@ -4,8 +4,38 @@ import VueAxios from "vue-axios";
 import JwtService from "@/common/jwt.service";
 import { API_URL } from "@/common/config";
 
+const EDIT_TOKEN_KEY = "slct-edit-token";
+
+/**
+ * 편집 토큰을 준비한다.
+ *
+ * 주소에 ?token=... 이 있으면 브라우저에 저장하고 주소창에서는 지운다
+ * (방문 기록·공유 링크·Referer 로 토큰이 퍼지지 않도록). 이후 모든 API 요청에
+ * X-SLCT-Token 헤더로 붙인다. 토큰이 없으면 보기 전용으로 동작한다.
+ */
+function setupEditToken() {
+  let token = "";
+  try {
+    const url = new URL(window.location.href);
+    const fromUrl = url.searchParams.get("token");
+    if (fromUrl !== null) {
+      if (fromUrl) window.localStorage.setItem(EDIT_TOKEN_KEY, fromUrl);
+      else window.localStorage.removeItem(EDIT_TOKEN_KEY); // ?token= 로 비우면 토큰 삭제
+      url.searchParams.delete("token");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+    }
+    token = window.localStorage.getItem(EDIT_TOKEN_KEY) || "";
+  } catch (e) {
+    token = "";
+  }
+  if (token) {
+    axios.defaults.headers.common["X-SLCT-Token"] = token;
+  }
+}
+
 const ApiService = {
   init() {
+    setupEditToken();
     Vue.use(VueAxios, axios);
     Vue.axios.defaults.baseURL = API_URL;
   },

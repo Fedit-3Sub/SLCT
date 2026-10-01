@@ -93,9 +93,12 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
+from corsheaders.defaults import default_headers  # noqa: E402
+CORS_ALLOW_HEADERS = (*default_headers, 'x-slct-token')
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        # 조회는 공개, 쓰기는 편집 토큰(SLCT_EDIT_TOKEN)이 필요하다.
+        'core.edit_token.EditTokenPermission',
     ]
 }

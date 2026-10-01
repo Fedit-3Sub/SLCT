@@ -119,7 +119,7 @@ def _summarize_measurements(items: List[Any]) -> Dict[str, Any]:
     for key in current[-1]:
         values = [r.get(key) for r in current]
         numbers = [v for v in values if _is_number(v)]
-        if numbers and len(numbers) == len(values) and key not in ("link_id", "measure_position_id"):
+        if numbers and len(numbers) == len(values) and not key.endswith("_id"):
             out[key] = round(sum(numbers) / len(numbers), 4)
         else:
             out[key] = values[-1]
@@ -171,7 +171,8 @@ def flatten_row(row: Dict[str, Any]) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     for short, values in grouped.items():
         numbers = [v for v in values if _is_number(v)]
-        if len(values) > 1 and numbers and len(numbers) == len(values):
+        is_identifier = short.endswith("_id") or short.endswith("Id") or short == "id"
+        if len(values) > 1 and numbers and len(numbers) == len(values) and not is_identifier:
             result[short] = round(sum(numbers) / len(numbers), 4)
         else:
             result[short] = values[0]

@@ -176,6 +176,13 @@ curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
 - Digital Brain 주소는 `FEDIT_BRAIN_URL`(기본 `http://220.124.222.84:1213`).
 - 예제 로직: `python manage.py load_samples` → 편집기에서 `/pohang-air-alert` (포항 대기 실데이터로 등급·경보 판정).
 
+#### 편집 토큰
+
+`SLCT_EDIT_TOKEN` 을 설정하면 조회는 누구나, 수정·실행·LLM 생성·연합트윈 등록은 토큰이 있어야 한다.
+편집기는 `https://{주소}/{로직ID}?token={토큰}` 으로 한 번 접속하면 토큰을 브라우저에 저장하고 주소창에서 지운다.
+API 는 `X-SLCT-Token` 헤더나 `?token=` 으로 받는다. 연합트윈이 부르는 `/api/logics/{uid}/invoke` 는 토큰 없이 열려 있다.
+`?token=` (빈 값)으로 접속하면 저장된 토큰을 지운다. 토큰을 바꾸면 기존 링크는 모두 무효가 된다.
+
 **문서 · 관리자**
 
 | Path | 설명 |

@@ -7,7 +7,7 @@
 식에서 쓸 수 있는 이름
 - 실행 입력값과 앞선 노드의 출력값: `기온`, `예측등급`
 - 노드 출력 묶음: `Task_1.PM10`, `Task_1["PM2.5"]`
-- 이름에 특수문자가 있는 값: `var("PM2.5")`
+- 이름에 특수문자가 있는 값: `var("PM2.5")`, 없을 때 기본값: `var("관광지", "F-KR-109941-0013")`
 
 Camunda 식(`${...}`)과 JS 연산자(`&&`, `||`, `===`, `true` 등)는 흔히 쓰이므로
 파이썬 문법으로 바꿔서 받아준다.
@@ -198,11 +198,14 @@ class _Evaluator:
             raise ExpressionError("함수는 이름으로만 호출할 수 있습니다.")
         args = [self.visit(arg) for arg in node.args]
         if node.func.id == "var":
-            if len(args) != 1:
-                raise ExpressionError("var() 에는 이름 하나를 넘겨야 합니다.")
-            if args[0] not in self.names:
-                raise ExpressionError(f"정의되지 않은 값입니다: {args[0]}")
-            return self.names[args[0]]
+            # var("이름") 또는 var("이름", 기본값). 기본값이 있으면 값이 없어도 오류가 아니다.
+            if len(args) not in (1, 2):
+                raise ExpressionError("var() 에는 이름과 선택적 기본값을 넘겨야 합니다.")
+            if args[0] in self.names and self.names[args[0]] is not None:
+                return self.names[args[0]]
+            if len(args) == 2:
+                return args[1]
+            raise ExpressionError(f"정의되지 않은 값입니다: {args[0]}")
         func = _FUNCTIONS.get(node.func.id)
         if func is None:
             raise ExpressionError(f"쓸 수 없는 함수입니다: {node.func.id}")

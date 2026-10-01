@@ -55,8 +55,27 @@ def _value_for(name: str, seed: bytes) -> Any:
         return f"MOCK-{number % 100000:05d}"
     if "경로" in name or "URL" in name:
         return f"/mock/{name}/{number % 1000}"
-    # 나머지는 0~150 사이 수치로 둔다(농도·지수·인원 등).
-    return round((number % 15000) / 100, 2)
+    # 이름에 맞는 현실적인 범위로 둔다. 범위를 벗어난 값(점유율 130% 등)은
+    # 다음 노드의 계산을 왜곡해 흐름 확인을 어렵게 한다.
+    low, high = _range_for(name)
+    return round(low + (number % 10000) / 10000 * (high - low), 2)
+
+
+RANGES = [
+    (("PM2.5", "pm25", "PM25"), (5, 70)),
+    (("PM10", "pm10", "미세먼지"), (10, 120)),
+    (("점유율", "혼잡도", "율", "률", "지수", "점수"), (0, 100)),
+    (("기온", "온도"), (-5, 35)),
+    (("습도",), (20, 95)),
+    (("시간", "소요"), (5, 120)),
+]
+
+
+def _range_for(name: str):
+    for keywords, bounds in RANGES:
+        if any(k in name for k in keywords):
+            return bounds
+    return (0, 150)
 
 
 def outputs_for(sim_id: str, inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

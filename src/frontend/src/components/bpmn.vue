@@ -2,6 +2,9 @@
   <div class="h-full w-full flex">
     <div ref="container" class="vue-bpmn-diagram-container"></div>
     <aside class="bpmn-sidebar">
+      <div v-if="!editable" class="readonly-banner">
+        보기 전용입니다. 수정·실행하려면 편집 토큰이 포함된 주소(<code>?token=…</code>)로 접속하세요.
+      </div>
       <section class="bpmn-tools">
         <header class="bpmn-tools__header">
           <span class="bpmn-tools__title">도구모음</span>
@@ -207,7 +210,7 @@
                 <button
                   class="copilot-composer-send"
                   type="submit"
-                  :disabled="!copilotPrompt.trim() || aiBusy"
+                  :disabled="!copilotPrompt.trim() || aiBusy || !editable"
                 >
                   {{ aiBusy ? '전송 중...' : '전송' }}
                 </button>
@@ -280,7 +283,7 @@
               class="bpmn-btn bpmn-btn--primary"
               type="button"
               @click="executeLogic"
-              :disabled="runBusy"
+              :disabled="runBusy || !editable"
             >
               {{ runBusy ? '실행 중...' : '서버에서 실행' }}
             </button>
@@ -401,7 +404,7 @@
               <button
                 class="bpmn-btn bpmn-btn--primary"
                 type="button"
-                :disabled="publishBusy || !feditForm.fdt || !feditForm.subjects.length"
+                :disabled="publishBusy || !editable || !feditForm.fdt || !feditForm.subjects.length"
                 @click="registerFedit"
               >
                 {{ publishBusy ? '등록 중...' : '연합트윈에 등록' }}
@@ -533,6 +536,9 @@ export default {
         publish: false,
         layout: false,
       },
+      // 편집 권한. 서버에 편집 토큰이 설정돼 있고 토큰이 없으면 보기 전용이다.
+      editable: true,
+      editTokenRequired: false,
       logicInfo: null,
       feditStatus: null,
       feditObjects: [],
@@ -595,6 +601,7 @@ export default {
     this.fetchLlmOptions();
     this.fetchCatalog();
     this.fetchRunHistory();
+    this.checkEditPermission();
 
     const PipelineModule = {
       __init__: [
@@ -883,6 +890,17 @@ export default {
       }
     },
 
+    async checkEditPermission() {
+      try {
+        const resp = await ApiService.get("/auth/edit");
+        const info = resp.data.data || {};
+        this.editTokenRequired = !!info.required;
+        this.editable = !!info.editable;
+      } catch (e) {
+        this.editable = true; // 확인하지 못하면 막지 않고 서버 응답(403)에 맡긴다
+      }
+    },
+
     // ---- 로직 API · 연합트윈 연계 -----------------------------------------
 
     async loadLogicInfo() {
@@ -1161,6 +1179,7 @@ export default {
     // Debounced save trigger
     queueSave() {
       if (!this.persistent) return;
+      if (!this.editable) return; // 보기 전용이면 서버에 저장하지 않는다
       if (this.importing) return; // skip while importing XML
       if (this.saveTimer) clearTimeout(this.saveTimer);
       this.saveTimer = setTimeout(() => {
@@ -1170,6 +1189,7 @@ export default {
     },
 
     async saveDiagram() {
+      if (!this.editable) return;
       try {
         if (this.importing) return;
         this.saving = true;
@@ -2563,6 +2583,16 @@ export default {
     flex-shrink: 0;
     font-size: 10px;
     color: #8a92a0;
+  }
+
+  .readonly-banner {
+    margin: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .publish-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 4px 0; font-size: 12px; }

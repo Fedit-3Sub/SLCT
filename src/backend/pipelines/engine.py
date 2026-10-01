@@ -125,6 +125,7 @@ class Node:
     wait_seconds: Optional[float] = None       # 타이머 이벤트
     attached_to: str = ""                      # 경계 이벤트가 붙은 노드
     is_error_boundary: bool = False
+    trigger: str = ""                          # 시작 이벤트의 정의(timer, conditional, message …)
     scope: Optional["Scope"] = None            # 하위 프로세스의 안쪽 흐름
 
 
@@ -136,7 +137,15 @@ class Scope:
     flows: Dict[str, Flow] = field(default_factory=dict)
 
     def start_nodes(self) -> List[Node]:
-        return [n for n in self.nodes.values() if n.type == "startEvent" and not n.incoming]
+        """실행을 시작할 시작 이벤트.
+
+        타이머·조건·메시지·신호 시작 이벤트는 해당 사건이 일어날 때 시작하는 흐름이므로,
+        실행 요청(편집기·API 호출)으로는 일반(none) 시작 이벤트만 시작한다.
+        일반 시작 이벤트가 하나도 없으면 모든 시작 이벤트로 시작한다.
+        """
+        starts = [n for n in self.nodes.values() if n.type == "startEvent" and not n.incoming]
+        plain = [n for n in starts if not n.trigger]
+        return plain or starts
 
     def error_boundary_of(self, node_id: str) -> Optional[Node]:
         for node in self.nodes.values():
@@ -253,6 +262,12 @@ def _build_scope(container: ET.Element) -> Scope:
                     duration = timer.find(_bpmn("timeDuration"))
                     if duration is not None:
                         node.wait_seconds = parse_duration("".join(duration.itertext()))
+            if local == "startEvent":
+                for definition in child:
+                    def_ns, def_local = _tag(definition)
+                    if def_ns == BPMN_NS and def_local.endswith("EventDefinition"):
+                        node.trigger = def_local[: -len("EventDefinition")]
+                        break
             if local == "boundaryEvent":
                 node.is_error_boundary = child.find(_bpmn("errorEventDefinition")) is not None
             if local in SCOPE_TAGS:
@@ -317,7 +332,12 @@ class Context:
 
 
 def _lookup_path(data: Any, path: str) -> Tuple[bool, Any]:
-    """점으로 구분한 경로(`data.items.0.name`)로 값을 꺼낸다."""
+    """점으로 구분한 경로(`data.items.0.name`)로 값을 꺼낸다.
+
+    `PM2.5` 처럼 이름 자체에 점이 있는 키는 통째로 먼저 찾는다.
+    """
+    if isinstance(data, Mapping) and path in data:
+        return True, data[path]
     current = data
     for part in [p for p in path.split(".") if p != ""]:
         if isinstance(current, Mapping) and part in current:
@@ -649,6 +669,9 @@ class Engine:
                 values[spec.name] = self.ctx.variables[spec.name]
             else:
                 step.warnings.append(f"입력 '{spec.name}' 에 연결된 값이 없어 비워서 보냅니다.")
+                continue
+            # 같은 노드의 다음 입력 식에서 앞서 계산한 값을 쓸 수 있게 한다(지수 → 종합 점수 등).
+            names[spec.name] = values[spec.name]
         return values
 
     def _call(self, node: Node, step: StepRecord) -> None:

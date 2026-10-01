@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://220.124.222.84:1213"
 CATALOG_TTL = 600          # 연합객체 목록·출력 이름 캐시(초)
-MAX_OUTPUT_NAMES = 40      # 노드 출력으로 노출할 이름 수 상한
+MAX_OUTPUT_NAMES = 80      # 노드 출력으로 노출할 이름 수 상한
 
 
 class BrainError(RuntimeError):

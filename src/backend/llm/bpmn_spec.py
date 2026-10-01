@@ -74,6 +74,8 @@ TYPE_ALIASES: Dict[str, str] = {
     "activity": "task",
 }
 
+EXEC_KEYS = ("url", "method", "inputs", "outputs", "doc", "default_to")
+
 _ID_INVALID = re.compile(r"[^A-Za-z0-9_.-]")
 
 DEFINITIONS_ATTRS = (
@@ -83,6 +85,7 @@ DEFINITIONS_ATTRS = (
     'xmlns:di="http://www.omg.org/spec/DD/20100524/DI" '
     # 토큰 시뮬레이션이 읽는 실행 URL 확장. 프런트엔드의 pipeline 디스크립터와 같은 uri 를 쓴다.
     'xmlns:pipeline="pipeline://" '
+    'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
     'targetNamespace="http://bpmn.io/schema/bpmn"'
 )
 
@@ -147,13 +150,18 @@ def normalize_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
         if original is not None:
             seen_ids.setdefault(str(original), node_id)
         seen_ids.setdefault(node_id, node_id)
-        nodes.append({
+        node = {
             "id": node_id,
             "type": node_type,
             "name": _clean_name(item.get("name")),
             # 카탈로그 항목을 지목한 경우 실행 URL 을 붙이기 위해 이름을 보존한다.
             "catalogId": _clean_name(item.get("catalogId")),
-        })
+        }
+        # 생성기(planner)가 직접 정한 실행 설정. 있으면 카탈로그 추정보다 우선한다.
+        for key in EXEC_KEYS:
+            if item.get(key):
+                node[key] = item[key]
+        nodes.append(node)
 
     if not nodes:
         nodes = [
@@ -202,6 +210,7 @@ def normalize_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
             "from": src,
             "to": dst,
             "name": _clean_name(item.get("name")),
+            "condition": str(item.get("condition") or "").strip(),
         })
 
     # 연결이 하나도 없으면 노드를 나열된 순서대로 직렬 연결한다.
@@ -212,6 +221,7 @@ def normalize_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
                 "from": nodes[i]["id"],
                 "to": nodes[i + 1]["id"],
                 "name": "",
+                "condition": "",
             })
     elif flows:
         # 소형 모델은 노드보다 연결을 적게 만들어 고립 노드를 남기는 일이 잦다.
@@ -240,10 +250,10 @@ def normalize_spec(spec: Dict[str, Any]) -> Dict[str, Any]:
 
             prev = anchor
             for orphan in orphans:
-                flows.append({"id": "", "from": prev, "to": orphan, "name": ""})
+                flows.append({"id": "", "from": prev, "to": orphan, "name": "", "condition": ""})
                 prev = orphan
             if end_id:
-                flows.append({"id": "", "from": prev, "to": end_id, "name": ""})
+                flows.append({"id": "", "from": prev, "to": end_id, "name": "", "condition": ""})
 
         # 재배선 후 흐름 id 를 다시 매긴다.
         for index, flow in enumerate(flows):
@@ -311,6 +321,29 @@ def resolve_catalog_id(name: str, declared: str, index: Dict[str, Dict[str, Any]
     return ""
 
 
+def _exec_extension(node: Dict[str, Any]) -> List[str]:
+    """생성기가 정한 실행 설정(URL·입력·출력)을 pipeline 확장 요소로."""
+    out = ["      <bpmn:extensionElements>", "        <pipeline:parameters>"]
+    if node.get("url"):
+        method = f' method="{xml_escape(node["method"])}"' if node.get("method") else ""
+        out.append(f'          <pipeline:parameter name="{xml_escape(node.get("name") or "")}" '
+                   f'url="{xml_escape(node["url"])}"{method} />')
+    for item in node.get("inputs") or []:
+        attrs = f'name="{xml_escape(item["name"])}"'
+        if item.get("source"):
+            attrs += f' source="{xml_escape(item["source"])}"'
+        elif item.get("value") not in (None, ""):
+            attrs += f' value="{xml_escape(item["value"])}"'
+        out.append(f"          <pipeline:input {attrs} />")
+    for item in node.get("outputs") or []:
+        attrs = f'name="{xml_escape(item["name"])}"'
+        if item.get("path"):
+            attrs += f' path="{xml_escape(item["path"])}"'
+        out.append(f"          <pipeline:output {attrs} />")
+    out += ["        </pipeline:parameters>", "      </bpmn:extensionElements>"]
+    return out
+
+
 def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> str:
     """spec 을 BPMN 2.0 XML 로 변환한다(좌표 없음 — 프런트가 자동 배치)."""
     data = normalize_spec(spec)
@@ -325,7 +358,7 @@ def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> st
     lines: List[str] = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<bpmn:definitions {DEFINITIONS_ATTRS} id="Definitions_AI">',
-        f'  <bpmn:process id="{process_id}" name="{xml_escape(data["name"])}" isExecutable="false">',
+        f'  <bpmn:process id="{process_id}" name="{xml_escape(data["name"])}" isExecutable="true">',
     ]
 
     catalog_index = _catalog_index()
@@ -337,6 +370,21 @@ def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> st
             attrs += f' name="{xml_escape(node["name"])}"'
 
         body: List[str] = []
+        if node.get("type") == "exclusiveGateway" and node.get("default_to"):
+            default = next((f["id"] for f in flows
+                            if f["from"] == node["id"] and f["to"] == node["default_to"] and not f.get("condition")), "")
+            if default:
+                attrs += f' default="{default}"'
+        if node.get("doc"):
+            body.append(f"      <bpmn:documentation>{_escape(str(node['doc']))}</bpmn:documentation>")
+        if node.get("url") or node.get("inputs") or node.get("outputs"):
+            body += _exec_extension(node)
+            body += [f"      <bpmn:incoming>{fid}</bpmn:incoming>" for fid in incoming[node["id"]]]
+            body += [f"      <bpmn:outgoing>{fid}</bpmn:outgoing>" for fid in outgoing[node["id"]]]
+            lines.append(f"    <{tag} {attrs}>")
+            lines.extend(body)
+            lines.append(f"    </{tag}>")
+            continue
         # 카탈로그 항목을 지목했다면 시뮬레이션이 호출할 수 있도록 실행 URL 을 심는다.
         resolved = resolve_catalog_id(node["name"], node.get("catalogId") or "", catalog_index)
         entry = catalog_index.get(resolved)
@@ -369,7 +417,13 @@ def spec_to_bpmn_xml(spec: Dict[str, Any], process_id: str = "Process_AI") -> st
         attrs = f'id="{flow["id"]}" sourceRef="{flow["from"]}" targetRef="{flow["to"]}"'
         if flow["name"]:
             attrs += f' name="{xml_escape(flow["name"])}"'
-        lines.append(f"    <bpmn:sequenceFlow {attrs} />")
+        if flow.get("condition"):
+            lines.append(f"    <bpmn:sequenceFlow {attrs}>")
+            lines.append('      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">'
+                         f'{_escape(flow["condition"])}</bpmn:conditionExpression>')
+            lines.append("    </bpmn:sequenceFlow>")
+        else:
+            lines.append(f"    <bpmn:sequenceFlow {attrs} />")
 
     lines.append("  </bpmn:process>")
     lines.append("</bpmn:definitions>")

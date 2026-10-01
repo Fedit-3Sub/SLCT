@@ -224,3 +224,40 @@ def generate_spec(prompt: str, model: str, base_url: Optional[str] = None,
         "tokens_out": payload.get("eval_count", 0) or 0,
     }
     return spec
+
+
+def generate_plan(prompt: str, model: str, system: str, schema: Dict[str, Any],
+                  base_url: Optional[str] = None, api_key: str = "") -> Optional[Dict[str, Any]]:
+    """Ollama 로 plan(요구사항 양식)을 채운다. 스키마의 enum 으로 등록된 이름만 고르게 한다.
+
+    실패하면 None. 호출자는 빈 plan 으로 보정 단계를 거쳐 계속 진행한다.
+    """
+    if not model:
+        return None
+    body = {
+        "model": model,
+        "stream": False,
+        "think": False,
+        "format": schema,
+        "options": {"temperature": 0.2, "num_predict": 400},
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": "요구사항: " + (prompt or "").strip()[:2000]},
+        ],
+    }
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    try:
+        response = requests.post(f"{normalize_base_url(base_url)}/api/chat", json=body, headers=headers,
+                                 timeout=_env_int("OLLAMA_TIMEOUT", 180))
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Ollama plan 요청 실패(%s): %s", model, exc)
+        return None
+    plan = parse_spec_json((payload.get("message") or {}).get("content") or "")
+    if not plan:
+        logger.warning("Ollama plan 출력을 해석하지 못함(%s)", model)
+        return None
+    plan["_usage"] = {"tokens_in": payload.get("prompt_eval_count", 0) or 0,
+                      "tokens_out": payload.get("eval_count", 0) or 0}
+    return plan

@@ -726,4 +726,22 @@ def describe_interface(xml: str) -> Dict[str, List[str]]:
                 visit(node.scope, False)
 
     visit(scopes[0], True)
-    return {"inputs": [n for n in wanted if n not in produced], "outputs": result}
+
+    # 식 안의 var("이름", 기본값) 은 호출하는 쪽이 넘길 수 있는 선택 입력이다.
+    optional: Dict[str, str] = {}
+    pattern = re.compile(r"""var\(\s*["']([^"']+)["']\s*(?:,\s*([^)]+))?\)""")
+
+    def collect(scope: Scope) -> None:
+        for node in scope.nodes.values():
+            for spec in node.config.inputs:
+                for match in pattern.finditer(spec.source or ""):
+                    name, default = match.group(1), (match.group(2) or "").strip().strip("'\"")
+                    if name not in produced:
+                        optional.setdefault(name, default)
+            if node.scope is not None:
+                collect(node.scope)
+
+    collect(scopes[0])
+    required = [n for n in wanted if n not in produced]
+    return {"inputs": required + [n for n in optional if n not in required],
+            "outputs": result, "defaults": optional}

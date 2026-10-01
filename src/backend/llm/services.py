@@ -18,7 +18,7 @@ import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from . import local_llm, ollama_client, rule_based
+from . import local_llm, ollama_client, planner, rule_based
 from .bpmn_spec import normalize_spec, spec_to_bpmn_xml, summarize_spec
 from .models import LlmConfig
 
@@ -83,67 +83,53 @@ def _resolve_ollama_model(config: Optional[LlmConfig], base_url: str) -> str:
 
 
 def _select_engine(prompt: str, config: Optional[LlmConfig]) -> Dict[str, Any]:
-    """가용한 엔진으로 spec 을 생성하고 사용한 엔진 정보를 함께 반환한다."""
-    # 1) 외부 LLM 서버 (Ollama)
-    remote_up = remote_provider_available(config)
-    use_ollama = ollama_enabled() and (config is None or config.provider == "ollama")
-    if use_ollama:
-        base_url = ollama_client.normalize_base_url(
-            getattr(config, "base_url", "") if config is not None else ""
-        )
+    """가용한 엔진으로 plan 을 채우고, 보정·조립한 spec 과 사용한 엔진 정보를 돌려준다.
+
+    엔진은 요구사항 양식(plan)만 채운다. 비거나 틀린 칸은 planner 가 핵심어로 보정하고
+    실행 가능한 spec 으로 조립하므로, 어느 엔진이든 결과는 바로 실행된다.
+    """
+    sources = planner.registry()
+    system = planner.system_prompt(sources)
+    schema = planner.plan_schema(list(sources))
+    started = time.time()
+
+    raw, engine, detail, remote_up = None, "rule-based", "", remote_provider_available(config)
+
+    # 1) Ollama 서버
+    if ollama_enabled() and (config is None or config.provider == "ollama"):
+        base_url = ollama_client.normalize_base_url(getattr(config, "base_url", "") if config is not None else "")
         if not ollama_client.is_reachable(base_url) and base_url != ollama_client.DEFAULT_BASE_URL:
-            # 고른 설정의 서버가 꺼져 있으면 기본 서버(OLLAMA_BASE_URL)로 넘어간다.
-            # 이때 설정의 모델은 기본 서버에 없을 수 있으므로 모델도 기본값으로 고른다.
+            # 고른 설정의 서버가 꺼져 있으면 기본 서버(OLLAMA_BASE_URL)와 기본 모델로 넘어간다.
             logger.info("LLM 서버(%s)에 연결할 수 없어 기본 서버로 전환", base_url)
             base_url, config = ollama_client.DEFAULT_BASE_URL, None
         if ollama_client.is_reachable(base_url):
+            remote_up = True
             model = _resolve_ollama_model(config, base_url)
             if model:
-                started = time.time()
-                spec = ollama_client.generate_spec(
-                    prompt, model, base_url,
+                raw = ollama_client.generate_plan(
+                    prompt, model, system, schema, base_url,
                     api_key=getattr(config, "api_key", "") if config is not None else "",
                 )
-                if spec:
-                    usage = spec.pop("_usage", {}) or {}
-                    return {
-                        "spec": spec,
-                        "engine": "ollama",
-                        "engine_detail": model,
-                        "remote_up": True,
-                        "tokens_in": usage.get("tokens_in", 0),
-                        "tokens_out": usage.get("tokens_out", 0),
-                        "elapsed": time.time() - started,
-                    }
-                logger.info("외부 LLM(%s) 생성 실패 — 다음 엔진으로 폴백", model)
-            remote_up = True
+                if raw:
+                    engine, detail = "ollama", model
 
     # 2) 내장 CPU LLM
-    if local_llm.is_available():
-        started = time.time()
-        spec = local_llm.generate_spec(prompt)
-        if spec:
-            usage = spec.pop("_usage", {}) or {}
-            return {
-                "spec": spec,
-                "engine": "local-llm",
-                "engine_detail": "",
-                "remote_up": remote_up,
-                "tokens_in": usage.get("tokens_in", 0),
-                "tokens_out": usage.get("tokens_out", 0),
-                "elapsed": time.time() - started,
-            }
-        logger.info("내장 LLM 생성 실패 — 규칙 기반으로 폴백")
+    if raw is None and local_llm.is_available():
+        raw = local_llm.generate_plan(prompt, system, schema)
+        if raw:
+            engine = "local-llm"
 
-    # 3) 규칙 기반 안전망
-    started = time.time()
+    # 3) 규칙 기반: 빈 plan 을 보정 단계가 핵심어로 채운다.
+    usage = (raw or {}).pop("_usage", {}) if raw else {}
+    plan = planner.normalize_plan(raw or {}, prompt, sources)
     return {
-        "spec": rule_based.build_spec(prompt),
-        "engine": "rule-based",
-        "engine_detail": "",
+        "spec": planner.build_spec(plan, sources),
+        "plan": plan,
+        "engine": engine,
+        "engine_detail": detail,
         "remote_up": remote_up,
-        "tokens_in": max(1, len(prompt or "") // 4),
-        "tokens_out": 0,
+        "tokens_in": usage.get("tokens_in", 0) or max(1, len(prompt or "") // 4),
+        "tokens_out": usage.get("tokens_out", 0),
         "elapsed": time.time() - started,
     }
 
@@ -162,7 +148,10 @@ def generate_with_llm(prompt: str, config: Optional[LlmConfig], diagram_uid: str
         xml = spec_to_bpmn_xml(spec)
     except Exception as exc:  # 어떤 경우에도 코파일럿이 죽지 않도록 방어
         logger.exception("BPMN 생성 실패")
-        fallback = normalize_spec(rule_based.build_spec(prompt or ""))
+        try:
+            fallback = normalize_spec(planner.build_spec(planner.normalize_plan({}, prompt or "")))
+        except Exception:
+            fallback = normalize_spec(rule_based.build_spec(prompt or ""))
         return {
             "message": "생성 중 문제가 발생하여 기본 초안을 제공합니다.",
             "generatedXml": spec_to_bpmn_xml(fallback),
@@ -192,6 +181,8 @@ def generate_with_llm(prompt: str, config: Optional[LlmConfig], diagram_uid: str
         note = "외부 LLM 서버에 연결할 수 없어 규칙 기반 생성기로 초안을 만들었습니다."
 
     message = f"{spec['name']} 초안을 생성했습니다. 노드 {node_count}개. {note} ({engine_label})"
+    if selected.get("plan"):
+        message += "\n" + planner.describe(selected["plan"])
 
     return {
         "message": message,

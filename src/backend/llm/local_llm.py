@@ -291,3 +291,35 @@ def generate_spec(prompt: str) -> Optional[Dict[str, Any]]:
         "tokens_out": usage.get("completion_tokens", 0),
     }
     return spec
+
+
+def generate_plan(prompt: str, system: str, schema: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """내장 LLM 으로 plan 을 채운다. JSON 스키마를 문법으로 바꿔 등록된 이름만 고르게 한다."""
+    model = _get_model()
+    if model is None:
+        return None
+    try:
+        import json
+
+        from llama_cpp import LlamaGrammar
+
+        grammar = LlamaGrammar.from_json_schema(json.dumps(schema, ensure_ascii=False), verbose=False)
+        result = model.create_chat_completion(
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": "요구사항: " + (prompt or "").strip()[:2000]},
+            ],
+            grammar=grammar,
+            max_tokens=_env_int("LOCAL_LLM_MAX_TOKENS", 400),
+            temperature=0.2,
+        )
+        text = result["choices"][0]["message"]["content"]
+    except Exception:
+        logger.exception("로컬 LLM plan 생성 실패")
+        return None
+    plan = parse_spec_json(text)
+    if not plan:
+        return None
+    usage = result.get("usage") or {}
+    plan["_usage"] = {"tokens_in": usage.get("prompt_tokens", 0), "tokens_out": usage.get("completion_tokens", 0)}
+    return plan

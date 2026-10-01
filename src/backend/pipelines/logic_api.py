@@ -71,6 +71,16 @@ def inputs_from_body(body: Any) -> Dict[str, Any]:
     return inputs
 
 
+def _typed(text: str) -> Any:
+    try:
+        return int(text)
+    except ValueError:
+        try:
+            return float(text)
+        except ValueError:
+            return text
+
+
 def _diagram(uid: str):
     return BpmnDiagram.objects.filter(uid=uid).first()
 
@@ -89,7 +99,8 @@ class LogicListView(APIView):
                 "updatedAt": diagram.updated_at.isoformat(),
                 "invokeUrl": invoke_url(request, diagram.uid),
                 "specUrl": f"{public_base_url(request)}/api/logics/{diagram.uid}/spec",
-                **interface,
+                "inputs": interface["inputs"],
+                "outputs": interface["outputs"],
                 "fedit": (diagram.metadata or {}).get("fedit"),
             })
         return Response({"data": items, "meta": {"count": len(items)}})
@@ -135,7 +146,14 @@ class LogicSpecView(APIView):
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         title = diagram.title or uid
-        input_props = {name: {"description": f"로직 입력 '{name}'"} for name in interface["inputs"]}
+        defaults = interface.get("defaults", {})
+        input_props = {}
+        for name in interface["inputs"]:
+            prop: Dict[str, Any] = {"description": f"로직 입력 '{name}'"}
+            if name in defaults:
+                prop["description"] += f" (선택, 기본값 {defaults[name]})"
+                prop["example"] = _typed(defaults[name])
+            input_props[name] = prop
         result_props = ({name: {"description": f"결과 '{name}'"} for name in interface["outputs"]}
                         or {"(전체 값)": {"description": "종료 이벤트에 결과를 정의하지 않아 실행 중 만들어진 값이 모두 담긴다."}})
         spec = {
@@ -250,3 +268,29 @@ class LogicFeditView(APIView):
         diagram.metadata = metadata
         diagram.save(update_fields=["metadata", "updated_at"])
         return Response({"data": metadata["fedit"]}, status=status.HTTP_201_CREATED)
+
+
+class LogicDocsView(APIView):
+    """로직 API 매뉴얼을 Swagger UI 로 보여준다(명세는 /spec 에서 자동 생성)."""
+
+    def get(self, request, uid: str):
+        from django.http import HttpResponse
+        from django.utils.html import escape
+
+        diagram = _diagram(uid)
+        if diagram is None:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+        title = escape(diagram.title or uid)
+        spec_url = f"/api/logics/{escape(uid)}/spec"
+        html = f"""<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} · 서비스 로직 API</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+<style>body{{margin:0}} .topbar{{display:none}} header{{padding:14px 20px;background:#0f172a;color:#fff;font:600 15px system-ui}}
+header a{{color:#93c5fd;font-weight:400;margin-left:12px}}</style></head>
+<body><header>{title} — 서비스 로직 API <a href="/{escape(uid)}">편집기에서 보기</a></header>
+<div id="ui"></div>
+<script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>SwaggerUIBundle({{url: "{spec_url}", dom_id: "#ui", deepLinking: true, tryItOutEnabled: true}});</script>
+</body></html>"""
+        return HttpResponse(html)

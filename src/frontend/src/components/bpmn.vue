@@ -277,13 +277,14 @@
               placeholder='{"지역코드": "47111", "기온": 24}'
             />
           </label>
+          <p v-if="!editable" class="bpmn-ai-helper">보기 전용에서는 저장된 로직을 실행합니다.</p>
           <p v-if="runError" class="run-error">{{ runError }}</p>
           <div class="bpmn-ai-actions">
             <button
               class="bpmn-btn bpmn-btn--primary"
               type="button"
               @click="executeLogic"
-              :disabled="runBusy || !editable"
+              :disabled="runBusy"
             >
               {{ runBusy ? '실행 중...' : '서버에서 실행' }}
             </button>
@@ -292,6 +293,7 @@
           <div v-if="currentRun" class="run-result">
             <div class="run-result__head">
               <span :class="['run-badge', `run-badge--${currentRun.status}`]">{{ runStatusLabel(currentRun.status) }}</span>
+              <button type="button" class="publish-copy" @click="markRunSteps(true)" title="실행 순서대로 다시 보기">▶ 재생</button>
               <span class="run-result__meta">
                 #{{ currentRun.id }}
                 <template v-if="currentRun.durationMs != null"> · {{ formatDuration(currentRun.durationMs) }}</template>
@@ -366,7 +368,8 @@
             </div>
             <div class="publish-row">
               <span class="publish-label">API 문서</span>
-              <a :href="logicInfo.specUrl" target="_blank" rel="noopener" class="publish-link">OpenAPI 명세 열기</a>
+              <a :href="logicInfo.specUrl.replace(/spec$/, 'docs')" target="_blank" rel="noopener" class="publish-link">API 문서(Swagger)</a>
+              <a :href="logicInfo.specUrl" target="_blank" rel="noopener" class="publish-link">OpenAPI JSON</a>
             </div>
             <div class="publish-row">
               <span class="publish-label">입력</span>
@@ -552,6 +555,7 @@ export default {
       runHistory: [],
       runPollTimer: null,
       runMarkedIds: [],
+      replayTimer: null,
       catalogItems: [],
       catalogQuery: "",
       catalogLoading: false,
@@ -981,6 +985,15 @@ export default {
       this.runBusy = true;
       this.stopRunPolling();
       try {
+        if (!this.editable) {
+          // 보기 전용: 저장된 로직을 공개 로직 API 로 실행하고 기록을 불러와 재생한다.
+          const resp = await ApiService.post(`/logics/${this.id}/invoke`, inputs);
+          const runId = resp.data.data.runId;
+          this.runBusy = false;
+          await this.loadRun(runId, true);
+          this.fetchRunHistory();
+          return;
+        }
         // 저장 전 편집 내용까지 실행되도록 현재 XML 을 함께 보낸다.
         const { xml } = await this.bpmn.saveXML();
         const resp = await ApiService.post("/pipelines/execute", { uid: this.id, xml, inputs });
@@ -989,7 +1002,11 @@ export default {
         this.pollRun(this.currentRun.id);
       } catch (error) {
         const data = error && error.response && error.response.data;
-        this.runError = (data && data.error) || "실행 요청에 실패했습니다.";
+        const runId = data && data.data && data.data.runId;
+        if (runId) {
+          await this.loadRun(runId, true); // 실패한 실행도 어디서 멈췄는지 보여준다
+        }
+        this.runError = (data && (data.error || (data.data && data.data.error))) || "실행 요청에 실패했습니다.";
         this.runBusy = false;
       }
     },
@@ -1009,6 +1026,7 @@ export default {
           this.runBusy = false;
           this.runPollTimer = null;
           this.fetchRunHistory();
+          this.markRunSteps(true); // 끝나면 실행 순서대로 다시 보여준다
           return;
         }
         this.runPollTimer = setTimeout(tick, 1000);
@@ -1023,13 +1041,13 @@ export default {
       }
     },
 
-    async loadRun(runId) {
+    async loadRun(runId, animate = false) {
       this.stopRunPolling();
       this.runBusy = false;
       try {
         const resp = await ApiService.get(`/pipelines/runs/${runId}`);
         this.currentRun = resp.data.data;
-        this.markRunSteps();
+        this.markRunSteps(animate);
         if (!["succeeded", "failed"].includes(this.currentRun.status)) {
           this.runBusy = true;
           this.pollRun(runId);
@@ -1050,23 +1068,84 @@ export default {
     },
 
     /** 실행 결과를 캔버스 노드 색으로 표시한다. */
-    markRunSteps() {
+    /**
+     * 실행 결과를 캔버스에 표시한다.
+     * 지나간 노드와 흐름에 색을 칠하고, 노드 아래에 실제로 오간 값을 꼬리표로 단다.
+     * animate 가 참이면 실행 순서대로 하나씩 보여준다(실행 재생).
+     */
+    markRunSteps(animate = false) {
       if (!this.bpmn) return;
       const canvas = this.bpmn.get("canvas");
       const registry = this.bpmn.get("elementRegistry");
+      const overlays = this.bpmn.get("overlays");
+      if (this.replayTimer) {
+        clearTimeout(this.replayTimer);
+        this.replayTimer = null;
+      }
       this.runMarkedIds.forEach((id) => {
         if (registry.get(id)) {
-          ["run-marker--succeeded", "run-marker--failed", "run-marker--skipped"].forEach((m) => canvas.removeMarker(id, m));
+          ["run-marker--succeeded", "run-marker--failed", "run-marker--skipped", "run-marker--flow"]
+            .forEach((m) => canvas.removeMarker(id, m));
         }
       });
-      const marked = [];
-      ((this.currentRun && this.currentRun.steps) || []).forEach((step) => {
-        if (registry.get(step.nodeId)) {
-          canvas.addMarker(step.nodeId, `run-marker--${step.status}`);
-          marked.push(step.nodeId);
+      overlays.remove({ type: "run-value" });
+      this.runMarkedIds = [];
+
+      const steps = (this.currentRun && this.currentRun.steps) || [];
+      const show = (step) => {
+        if (!registry.get(step.nodeId)) return;
+        canvas.addMarker(step.nodeId, `run-marker--${step.status}`);
+        this.runMarkedIds.push(step.nodeId);
+        (step.flows || []).forEach((flowId) => {
+          if (registry.get(flowId)) {
+            canvas.addMarker(flowId, "run-marker--flow");
+            this.runMarkedIds.push(flowId);
+          }
+        });
+        const label = this.stepBadge(step);
+        if (label) {
+          const badge = document.createElement("div");
+          badge.className = `run-value run-value--${step.status}`;
+          badge.textContent = label;
+          badge.title = label;
+          overlays.add(step.nodeId, "run-value", { position: { bottom: -6, left: 0 }, html: badge });
         }
-      });
-      this.runMarkedIds = marked;
+      };
+
+      if (!animate) {
+        steps.forEach(show);
+        return;
+      }
+      let index = 0;
+      const next = () => {
+        if (index >= steps.length) {
+          this.replayTimer = null;
+          return;
+        }
+        show(steps[index]);
+        index += 1;
+        this.replayTimer = setTimeout(next, 450);
+      };
+      next();
+    },
+
+    /** 노드 꼬리표 문구: 출력 값 두 개, 실패면 오류, 게이트웨이는 고른 흐름. */
+    stepBadge(step) {
+      if (step.status === "failed") return `실패: ${(step.error || "").slice(0, 40)}`;
+      if (step.nodeType && step.nodeType.endsWith("Gateway")) {
+        const registry = this.bpmn.get("elementRegistry");
+        const names = (step.flows || [])
+          .map((id) => registry.get(id))
+          .filter(Boolean)
+          .map((el) => el.businessObject.name)
+          .filter(Boolean);
+        return names.length ? `→ ${names.join(", ")}` : "";
+      }
+      const values = Object.entries(step.outputs || {})
+        .filter(([key, value]) => !key.startsWith("_") && value !== null && typeof value !== "object")
+        .slice(0, 2)
+        .map(([key, value]) => `${key} ${typeof value === "number" ? Math.round(value * 100) / 100 : String(value).slice(0, 14)}`);
+      return values.join(" · ");
     },
 
     focusElement(nodeId) {
@@ -2664,6 +2743,25 @@ export default {
     overflow-y: auto;
   }
   .run-history { margin-top: 10px; }
+  .djs-connection.run-marker--flow .djs-visual > path { stroke: #16a34a !important; stroke-width: 3px !important; }
+  .run-value {
+    max-width: 180px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: #166534;
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transform: translateY(100%);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    animation: run-value-in 0.25s ease-out;
+  }
+  .run-value--failed { background: #b91c1c; }
+  .run-value--skipped { background: #6b7280; }
+  @keyframes run-value-in { from { opacity: 0; transform: translateY(80%); } to { opacity: 1; transform: translateY(100%); } }
   .djs-element.run-marker--succeeded .djs-visual > :nth-child(1) { stroke: #16a34a !important; stroke-width: 3px !important; }
   .djs-element.run-marker--failed .djs-visual > :nth-child(1) { stroke: #dc2626 !important; stroke-width: 3px !important; }
 

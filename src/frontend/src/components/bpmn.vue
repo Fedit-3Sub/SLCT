@@ -1215,7 +1215,23 @@ export default {
           y: Math.round(viewbox.y + viewbox.height / 2 + nudge),
         };
 
-        const created = modeling.createShape(shape, position, canvas.getRootElement());
+        // 풀(Participant)이 있는 협업 다이어그램은 최상위가 Collaboration 이라 노드를 바로
+        // 올릴 수 없다. 화면 가운데를 품은 풀(없으면 첫 풀) 안에 넣는다.
+        let parent = canvas.getRootElement();
+        if (is(parent, 'bpmn:Collaboration')) {
+          const pools = elementRegistry.filter((el) => is(el, 'bpmn:Participant') && el.businessObject.processRef);
+          const inside = (el) => position.x > el.x && position.x < el.x + el.width
+            && position.y > el.y && position.y < el.y + el.height;
+          const pool = pools.find(inside) || pools[0];
+          if (pool) {
+            parent = pool;
+            if (!inside(pool)) {
+              position.x = Math.round(pool.x + pool.width / 2);
+              position.y = Math.round(pool.y + pool.height / 2);
+            }
+          }
+        }
+        const created = modeling.createShape(shape, position, parent);
         modeling.updateProperties(created, { name: item.label });
 
         // 실행 정보를 문서화 필드에 남겨 시뮬레이션·검토 시 참고할 수 있게 한다.

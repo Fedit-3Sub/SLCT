@@ -9,9 +9,10 @@ const EDIT_TOKEN_KEY = "slct-edit-token";
 /**
  * 편집 토큰을 준비한다.
  *
- * 주소에 ?token=... 이 있으면 브라우저에 저장하고 주소창에서는 지운다
- * (방문 기록·공유 링크·Referer 로 토큰이 퍼지지 않도록). 이후 모든 API 요청에
+ * 주소에 ?token=... 이 있으면 브라우저에 저장하고, 주소창에도 그대로 남겨 둔다
+ * (북마크·새로고침해도 편집 권한이 유지되도록). 이후 모든 API 요청에
  * X-SLCT-Token 헤더로 붙인다. 토큰이 없으면 보기 전용으로 동작한다.
+ * 주의: 토큰이 든 주소를 공유하면 편집 권한도 함께 넘어간다.
  */
 function setupEditToken() {
   let token = "";
@@ -21,8 +22,6 @@ function setupEditToken() {
     if (fromUrl !== null) {
       if (fromUrl) window.localStorage.setItem(EDIT_TOKEN_KEY, fromUrl);
       else window.localStorage.removeItem(EDIT_TOKEN_KEY); // ?token= 로 비우면 토큰 삭제
-      url.searchParams.delete("token");
-      window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
     }
     token = window.localStorage.getItem(EDIT_TOKEN_KEY) || "";
   } catch (e) {

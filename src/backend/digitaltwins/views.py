@@ -152,3 +152,39 @@ class FeditMetadataView(APIView):
             items = [fedit_client.summarize(x) for x in fedit_client.list_resource(resource)]
             data[resource] = {"label": label, "count": len(items), "items": items}
         return Response({"data": data, "meta": {"configured": True, "source": fedit_client.base_url()}})
+
+
+class FeditMetadataResourceView(APIView):
+    """2세부 메타데이터 리소스 조회(노드용).
+
+    ?id= (digitalTwinId / simulationId 별칭) 로 한 건, ?q= (검색어 별칭) 로 이름·설명·키워드 검색.
+    둘 다 없으면 전체 목록. 응답에는 목록과 함께 첫 항목의 필드를 평평하게 넣어
+    노드 출력(name, description …)으로 바로 쓸 수 있게 한다.
+    """
+
+    ID_ALIASES = ("id", "digitalTwinId", "simulationId")
+    QUERY_ALIASES = ("q", "검색어", "keyword")
+
+    def get(self, request, resource: str):
+        if resource not in fedit_client.RESOURCES:
+            return Response({"error": f"지원하지 않는 메타데이터 리소스입니다: {resource}"}, status=status.HTTP_404_NOT_FOUND)
+        if not fedit_client.is_configured():
+            return Response({"error": "메타데이터 저장소 토큰(FEDIT_META_TOKEN)이 설정되지 않았습니다."},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        items = [fedit_client.summarize(x) for x in fedit_client.list_resource(resource)]
+        wanted_id = next((request.query_params.get(k) for k in self.ID_ALIASES if request.query_params.get(k)), "")
+        query = next((request.query_params.get(k) for k in self.QUERY_ALIASES if request.query_params.get(k)), "")
+        if wanted_id:
+            items = [i for i in items if i["id"] == wanted_id or i["digitalTwinId"] == wanted_id]
+        if query:
+            needle = query.lower()
+            items = [i for i in items if needle in " ".join(
+                [i["name"], i["description"], " ".join(map(str, i["keywords"] or []))]).lower()]
+        first = items[0] if items else {}
+        data = {
+            "count": len(items),
+            "names": [i["name"] for i in items],
+            "items": items,
+            **{k: first.get(k) for k in ("id", "name", "description", "keywords", "owner", "accessUrl", "digitalTwinId")},
+        }
+        return Response({"data": data})

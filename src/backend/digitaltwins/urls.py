@@ -7,6 +7,7 @@ from .views import (
     FeditObjectLatestView,
     FeditObjectSeriesView,
     FeditMetadataView,
+    FeditMetadataResourceView,
 )
 
 urlpatterns = [
@@ -16,5 +17,6 @@ urlpatterns = [
     path('fedit/objects', FeditObjectListView.as_view(), name='fedit-objects'),
     path('fedit/objects/latest', FeditObjectLatestView.as_view(), name='fedit-object-latest'),
     path('fedit/metadata', FeditMetadataView.as_view(), name='fedit-metadata'),
+    path('fedit/metadata/<str:resource>', FeditMetadataResourceView.as_view(), name='fedit-metadata-resource'),
     path('fedit/objects/series', FeditObjectSeriesView.as_view(), name='fedit-object-series'),
 ]

@@ -184,7 +184,8 @@ class UnifiedSearchView(APIView):
                     "api_id": item.get("api_id"),
                     "schema": item.get("schema", {}),
                     # 로직 실행기·토큰 시뮬레이션이 호출할 실행 경로와 입출력 규격
-                    "url": f"{mock.MOCK_PATH}?id={item.get('api_id')}",
+                    "url": item.get("url") or f"{mock.MOCK_PATH}?id={item.get('api_id')}",
+                    "method": item.get("method", ""),
                     "inputs": item.get("schema", {}).get("inputs", []),
                     "outputs": item.get("schema", {}).get("outputs", []),
                 },

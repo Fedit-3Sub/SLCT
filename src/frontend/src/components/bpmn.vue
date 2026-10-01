@@ -235,6 +235,7 @@
             type="search"
             placeholder="이름·기관·설명으로 검색 (예: 혼잡, 미세먼지)"
           />
+          <p v-if="catalogNotice" class="catalog-notice" role="status">{{ catalogNotice }}</p>
           <p v-if="catalogLoading" class="catalog-empty">불러오는 중...</p>
           <p v-else-if="!filteredCatalog.length" class="catalog-empty">검색 결과가 없습니다.</p>
           <div v-else class="catalog-list">
@@ -562,6 +563,9 @@ export default {
       runMarkedIds: [],
       replayTimer: null,
       catalogItems: [],
+      catalogNotice: "",
+      catalogNoticeTimer: null,
+      catalogAddCount: 0,
       catalogQuery: "",
       catalogLoading: false,
       quickPrompts: [
@@ -1185,6 +1189,12 @@ export default {
       return JSON.stringify(value, null, 2);
     },
 
+    showCatalogNotice(text) {
+      this.catalogNotice = text;
+      clearTimeout(this.catalogNoticeTimer);
+      this.catalogNoticeTimer = setTimeout(() => { this.catalogNotice = ""; }, 2500);
+    },
+
     addCatalogNode(item) {
       // 카탈로그 항목을 현재 다이어그램에 노드로 추가하고 메타데이터를 붙인다.
       try {
@@ -1196,10 +1206,14 @@ export default {
         const type = item.bpmn_type || 'bpmn:ServiceTask';
         const shape = elementFactory.createShape({ type });
 
-        // 기존 요소와 겹치지 않도록 배치 지점을 아래로 밀어낸다.
-        const existing = elementRegistry.filter((el) => el.parent && !el.waypoints && !el.labelTarget);
-        const bottom = existing.reduce((max, el) => Math.max(max, (el.y || 0) + (el.height || 0)), 0);
-        const position = { x: 200, y: (bottom || 100) + 80 };
+        // 지금 보고 있는 화면 가운데에 둔다. 다이어그램 맨 아래에 두면 큰 다이어그램에서는
+        // 화면 밖에 생겨 추가된 줄 모른다. 연달아 추가하면 조금씩 비켜 놓는다.
+        const viewbox = canvas.viewbox();
+        const nudge = (this.catalogAddCount = ((this.catalogAddCount || 0) + 1) % 6) * 30;
+        const position = {
+          x: Math.round(viewbox.x + viewbox.width / 2 + nudge),
+          y: Math.round(viewbox.y + viewbox.height / 2 + nudge),
+        };
 
         const created = modeling.createShape(shape, position, canvas.getRootElement());
         modeling.updateProperties(created, { name: item.label });
@@ -1226,7 +1240,8 @@ export default {
           modeling.updateProperties(created, { extensionElements });
         }
 
-        canvas.scrollToElement(created);
+        this.bpmn.get('selection').select(created); // 속성 패널에 바로 보이게
+        this.showCatalogNotice(`추가됨: ${item.label}`);
         this.$emit('catalog-node-added', item);
       } catch (error) {
         console.error('노드를 추가하지 못했습니다.', error);
@@ -2614,6 +2629,15 @@ export default {
     margin-bottom: 8px;
     border: 1px solid #d5dae2;
     border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .catalog-notice {
+    margin: 0 0 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #dcfce7;
+    color: #166534;
     font-size: 12px;
   }
 

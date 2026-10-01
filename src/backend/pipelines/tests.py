@@ -331,7 +331,10 @@ class LogicApiTests(TestCase):
     def test_fedit_registration_payload(self):
         from unittest import mock
         BpmnDiagram.objects.create(uid="reg", title="대기 경보", xml=logic_diagram())
-        with mock.patch("digitaltwins.brain.register_simulation", return_value={"simulation_id": "S9"}) as reg:
+        resp = self.client.post("/api/logics/reg/fedit", {"fdt": "FDT1", "subjects": ["X"]}, content_type="application/json")
+        self.assertEqual(resp.status_code, 403)   # 기본은 꺼짐
+        with mock.patch("digitaltwins.brain.register_simulation", return_value={"simulation_id": "S9"}) as reg, \
+             mock.patch.dict("os.environ", {"SLCT_FEDIT_REGISTER": "1"}):
             resp = self.client.post("/api/logics/reg/fedit",
                                     {"fdt": "FDT1", "subjects": ["KR-104111-0109"], "timeStep": 2},
                                     content_type="application/json", HTTP_HOST="slct.example.org")
@@ -392,3 +395,19 @@ class EditTokenTests(TestCase):
         self.assertEqual(self.client.post("/api/logics/open/invoke", {}, content_type="application/json").status_code, 200)
         self.assertEqual(self.client.get("/api/auth/edit").json()["data"], {"required": True, "editable": False})
         self.assertEqual(self.client.get("/api/auth/edit", HTTP_X_SLCT_TOKEN="secret-token").json()["data"]["editable"], True)
+
+
+class ExternalWriteGuardTests(SimpleTestCase):
+    def test_external_post_blocked_by_default(self):
+        from unittest import mock
+        from .engine import ExecutionError, NodeConfig
+        from .invoker import http_invoker
+        config = NodeConfig(url="https://genix.example.org/simulation/form", method="POST")
+        with mock.patch("requests.request") as req:
+            with self.assertRaises(ExecutionError):
+                http_invoker(config, {"a": 1})
+            req.assert_not_called()
+        with mock.patch("requests.request") as req, mock.patch.dict("os.environ", {"SLCT_EXTERNAL_WRITE": "1"}):
+            req.return_value = mock.Mock(status_code=200, text="{}", json=lambda: {})
+            http_invoker(config, {"a": 1})
+            req.assert_called_once()

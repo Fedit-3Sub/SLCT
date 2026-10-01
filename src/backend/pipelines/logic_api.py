@@ -41,6 +41,10 @@ FEDIT_META_KEYS = (
 )
 
 
+def fedit_register_enabled() -> bool:
+    return os.environ.get("SLCT_FEDIT_REGISTER", "").strip().lower() in ("1", "true", "yes")
+
+
 def public_base_url(request) -> str:
     """외부(연합트윈)에서 이 백엔드를 부를 주소. SLCT_PUBLIC_URL 이 우선한다."""
     configured = os.environ.get("SLCT_PUBLIC_URL", "").strip().rstrip("/")
@@ -219,9 +223,14 @@ class LogicFeditView(APIView):
             except brain.BrainError as exc:
                 return Response({"data": {"registration": registration, "remote": None, "error": str(exc)}})
         return Response({"data": {"registration": registration, "remote": remote,
-                                  "invokeUrl": invoke_url(request, uid)}})
+                                  "invokeUrl": invoke_url(request, uid),
+                                  "registerEnabled": fedit_register_enabled()}})
 
     def post(self, request, uid: str):
+        if not fedit_register_enabled():
+            # 연합트윈 공용 서버에 기록을 남기는 작업이라 기본으로 꺼 둔다.
+            return Response({"error": "연합트윈 등록 기능이 꺼져 있습니다(서버 설정 SLCT_FEDIT_REGISTER=1 필요)."},
+                            status=status.HTTP_403_FORBIDDEN)
         diagram = _diagram(uid)
         if diagram is None:
             return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)

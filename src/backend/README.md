@@ -176,6 +176,13 @@ curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
 - Digital Brain 주소는 `FEDIT_BRAIN_URL`(기본 `http://220.124.222.84:1213`).
 - 예제 로직: `python manage.py load_samples` → 편집기에서 `/pohang-air-alert` (포항 대기 실데이터로 등급·경보 판정).
 
+#### 외부 시스템 보호
+
+서비스 로직 도구는 다른 기관 시스템에 기록을 남기지 않는 것을 기본으로 한다.
+
+- `SLCT_FEDIT_REGISTER=1` 일 때만 연합트윈 Digital Brain 에 시뮬레이션을 등록할 수 있다(기본 꺼짐, 편집기 등록 양식도 숨김).
+- 로직 실행 중 외부 http(s) 주소에 대한 GET 외 호출(예: GENIX 대기환경 시뮬레이션 생성)은 `SLCT_EXTERNAL_WRITE=1` 일 때만 보낸다(기본 차단). 조회(GET)와 이 서버의 경로(`/api/...`)는 그대로 동작한다.
+
 #### 편집 토큰
 
 `SLCT_EDIT_TOKEN` 을 설정하면 조회는 누구나, 수정·실행·LLM 생성·연합트윈 등록은 토큰이 있어야 한다.

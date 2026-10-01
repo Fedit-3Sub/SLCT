@@ -381,6 +381,10 @@
             </div>
 
             <div class="catalog-group__label">연합트윈 시뮬레이션 등록</div>
+            <p v-if="!feditStatus || !feditStatus.registerEnabled" class="bpmn-ai-helper">
+              연합트윈 공용 서버에 기록을 남기는 기능이라 꺼져 있습니다(서버 설정으로만 켤 수 있음).
+            </p>
+            <template v-if="feditStatus && feditStatus.registerEnabled">
             <div v-if="feditStatus && feditStatus.registration" class="publish-registered">
               등록됨: {{ feditStatus.registration.fdt }} · {{ feditStatus.registration.subjects.join(', ') }}
               (주기 {{ feditStatus.registration.timeStep }})
@@ -413,6 +417,7 @@
                 {{ publishBusy ? '등록 중...' : '연합트윈에 등록' }}
               </button>
             </div>
+            </template>
           </template>
           <div class="bpmn-ai-actions">
             <button class="bpmn-btn" type="button" @click="loadLogicInfo">새로고침</button>

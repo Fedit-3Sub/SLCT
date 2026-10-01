@@ -5,6 +5,7 @@
 - http(s) 주소                : 그대로 호출한다
 
 GET 은 입력값을 질의 문자열로, 그 밖의 메서드는 JSON 본문으로 보낸다.
+외부 시스템(http(s) 주소)에 대한 GET 외 호출은 SLCT_EXTERNAL_WRITE=1 일 때만 보낸다.
 메서드를 지정하지 않으면 입력이 있을 때 POST, 없을 때 GET 으로 본다.
 """
 
@@ -21,6 +22,10 @@ from .engine import CallResult, ExecutionError, NodeConfig
 
 BASE_URL = os.environ.get("PIPELINE_BASE_URL", "http://127.0.0.1:1337")
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+def external_write_allowed() -> bool:
+    return os.environ.get("SLCT_EXTERNAL_WRITE", "").strip().lower() in ("1", "true", "yes")
 
 
 def _method(config: NodeConfig, inputs: Dict[str, Any]) -> str:
@@ -41,11 +46,19 @@ def http_invoker(config: NodeConfig, inputs: Dict[str, Any]) -> CallResult:
             request={"method": method, "url": url, "mock": True},
         )
 
-    if not urlsplit(url).scheme:
+    external = bool(urlsplit(url).scheme)
+    if not external:
         url = urljoin(BASE_URL.rstrip("/") + "/", url.lstrip("/"))
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https"):
         raise ExecutionError(f"지원하지 않는 주소입니다: {config.url}")
+    if external and method != "GET" and not external_write_allowed():
+        # 외부 시스템(다른 기관 서버)에 데이터를 만들거나 바꾸는 호출은 기본으로 막는다.
+        # 예: GENIX 대기환경 시뮬레이션 생성(POST). 조회(GET)는 허용한다.
+        raise ExecutionError(
+            f"외부 시스템에 대한 {method} 호출은 막혀 있습니다({parts.netloc}). "
+            "실제로 호출하려면 서버 설정 SLCT_EXTERNAL_WRITE=1 이 필요합니다."
+        )
 
     request_info: Dict[str, Any] = {"method": method, "url": url}
     kwargs: Dict[str, Any] = {"timeout": config.timeout or 30}

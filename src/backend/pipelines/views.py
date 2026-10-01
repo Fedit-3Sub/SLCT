@@ -220,12 +220,14 @@ class UnifiedSearchView(APIView):
             qs_items = list(qs.values("id", "name", "category", "url", "meta"))
             origin = "model"
         else:
-            # DigitalTwinListView 와 같은 순서로 대체 자료를 찾는다.
-            entries = fedit_client.list_simulations() if fedit_client.is_configured() else []
-            origin = "fedit"
-            if not entries:
-                entries = catalog.simulation_entries()
-                origin = "catalog"
+            # 내장 카탈로그에 2세부 메타데이터의 실행 가능한 시뮬레이션을 더한다(대체하지 않음).
+            entries = catalog.simulation_entries()
+            if fedit_client.is_configured():
+                known = {e["name"] for e in entries}
+                extra = [e for e in fedit_client.list_simulations() if e["name"] not in known]
+                for offset, e in enumerate(extra, start=len(entries) + 1):
+                    entries.append({**e, "id": offset, "meta": {**e.get("meta", {}), "description": "2세부 메타데이터에 등록된 시뮬레이션"}})
+            origin = "catalog+fedit" if any(e.get("meta", {}).get("source") == "fedit" for e in entries) else "catalog"
             qs_items = entries
 
         out = []

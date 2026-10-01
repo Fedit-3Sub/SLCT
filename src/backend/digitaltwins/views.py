@@ -15,13 +15,14 @@ class DigitalTwinListView(APIView):
     def get(self, request):
         qs = DigitalTwinSource.objects.filter(enabled=True).order_by("name")
         if not qs.exists():
-            # DB 가 비어 있으면 실제 연합트윈 메타데이터를 시도하고,
-            # 토큰이 없거나 연결되지 않으면 내장 카탈로그로 대체한다.
-            entries = fedit_client.list_simulations() if fedit_client.is_configured() else []
-            origin = "fedit"
-            if not entries:
-                entries = catalog.simulation_entries()
-                origin = "catalog"
+            # 내장 카탈로그에 2세부 메타데이터의 실행 가능한 시뮬레이션을 더한다(대체하지 않음).
+            entries = catalog.simulation_entries()
+            if fedit_client.is_configured():
+                known = {e["name"] for e in entries}
+                extra = [e for e in fedit_client.list_simulations() if e["name"] not in known]
+                for offset, e in enumerate(extra, start=len(entries) + 1):
+                    entries.append({**e, "id": offset, "meta": {**e.get("meta", {}), "description": "2세부 메타데이터에 등록된 시뮬레이션"}})
+            origin = "catalog+fedit" if any(e.get("meta", {}).get("source") == "fedit" for e in entries) else "catalog"
             items = [
                 {
                     "id": entry["id"],
@@ -138,3 +139,16 @@ class FeditObjectSeriesView(APIView):
             return Response({"data": brain.series(fdt, fdo, prop, count)})
         except brain.BrainError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+class FeditMetadataView(APIView):
+    """2세부 메타데이터 저장소의 단일 트윈 메타정보 요약(디지털 트윈·센서·제어기·시뮬레이션)."""
+
+    def get(self, request):
+        if not fedit_client.is_configured():
+            return Response({"data": {}, "meta": {"configured": False}})
+        data = {}
+        for resource, label in fedit_client.RESOURCES.items():
+            items = [fedit_client.summarize(x) for x in fedit_client.list_resource(resource)]
+            data[resource] = {"label": label, "count": len(items), "items": items}
+        return Response({"data": data, "meta": {"configured": True, "source": fedit_client.base_url()}})

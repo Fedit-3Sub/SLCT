@@ -12,8 +12,9 @@
 토큰은 자격증명이므로 저장소에 두지 않는다. 환경변수나 배포 시크릿으로 주입한다.
 
 주요 경로 (Swagger: {base}/meta/swagger-ui/index.html)
-    GET /meta/api/v1/resource/dts                      디지털트윈 목록
-    GET /meta/api/v1/resource/dts/{digitalTwinId}      디지털트윈 상세
+    GET /meta/api/v1/resource/digitalTwins             디지털트윈 목록
+    GET /meta/api/v1/resource/digitalTwins/{id}        디지털트윈 상세
+    GET /meta/api/v1/resource/sensors | controllers    센서·제어기 목록
     GET /meta/api/v1/resource/simulations              시뮬레이션 목록
     GET /meta/api/v1/resource/simulations/{id}         시뮬레이션 상세
 """
@@ -31,7 +32,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_BASE_URL = "http://220.124.222.86:16997"
 # 메타데이터 등록 과정에서 표준 모델과 속성명이 달라진 경우가 있어 후보를 순서대로 확인한다.
 NAME_KEYS = ("simulationName", "name", "dtName", "title")
-ID_KEYS = ("simulationId", "id", "digitalTwinId", "medataSetId")
 
 
 def base_url() -> str:
@@ -107,28 +107,53 @@ def _iter_items(payload: Any) -> List[Dict[str, Any]]:
     return []
 
 
+# 메타데이터 저장소의 리소스 이름(dataUri). 2026-10 기준 운영 서버에서 응답하는 것.
+RESOURCES = {
+    "digitalTwins": "디지털 트윈",
+    "sensors": "센서",
+    "controllers": "제어기",
+    "simulations": "시뮬레이션",
+}
+ID_KEYS = ("simulationId", "dtsimid", "id", "digitalTwinId", "dtid", "medataSetId")
+
+
+def list_resource(resource: str, page_size: int = 100) -> List[Dict[str, Any]]:
+    """메타데이터 리소스 목록(원본 항목). 실패하면 빈 목록."""
+    payload = _get(f"/resource/{resource}", {"curPage": 1, "pageListSize": page_size})
+    return _iter_items(payload)
+
+
+def summarize(item: Dict[str, Any]) -> Dict[str, Any]:
+    """메타데이터 항목에서 화면·노드에 쓸 공통 필드만 고른다."""
+    return {
+        "id": _pick(item, ID_KEYS),
+        "name": _pick(item, NAME_KEYS),
+        "metaModel": item.get("metaModel") or "",
+        "description": item.get("description") or "",
+        "keywords": item.get("keywords") or [],
+        "owner": item.get("owner") or "",
+        "digitalTwinId": item.get("digitalTwinId") or item.get("dtid") or "",
+        "accessUrl": item.get("simulationAccessURL") or item.get("url") or "",
+    }
+
+
 def list_simulations(page_size: int = 50) -> List[Dict[str, Any]]:
-    """등록된 시뮬레이션 목록을 카탈로그 항목 형태로 반환한다."""
-    payload = _get(
-        "/resource/simulations",
-        {"curPage": 1, "pageListSize": page_size, "metaModel": "ketiModelSimulation"},
-    )
-    items = _iter_items(payload)
+    """실행 주소가 있는 시뮬레이션만 카탈로그 항목 형태로 반환한다.
+
+    메타데이터에만 등록되고 실행 주소(simulationAccessURL)가 없는 시뮬레이션은
+    노드로 실행할 수 없으므로 여기서 제외한다(내장 카탈로그가 그대로 쓰인다).
+    """
     entries: List[Dict[str, Any]] = []
-    for index, item in enumerate(items, start=1):
-        name = _pick(item, NAME_KEYS)
-        if not name:
+    for index, item in enumerate(list_resource("simulations", page_size), start=1):
+        info = summarize(item)
+        if not info["name"] or not info["accessUrl"]:
             continue
         entries.append({
             "id": index,
-            "name": name[:128],
+            "name": info["name"][:128],
             "category": str(item.get("category") or "연합트윈"),
-            "url": str(item.get("url") or item.get("endpoint") or ""),
-            "meta": {
-                "simulationId": _pick(item, ID_KEYS),
-                "twinId": str(item.get("digitalTwinId") or ""),
-                "source": "fedit",
-            },
+            "url": info["accessUrl"],
+            "meta": {"simulationId": info["id"], "twinId": info["digitalTwinId"], "source": "fedit"},
         })
     return entries
 
@@ -138,7 +163,7 @@ def get_digital_twin(digital_twin_id: str) -> Optional[Dict[str, Any]]:
     if not digital_twin_id:
         return None
     payload = _get(
-        f"/resource/dts/{digital_twin_id}",
+        f"/resource/digitalTwins/{digital_twin_id}",
         {"arrayDataLimitYn": "Y", "arrayDataLimit": 50},
     )
     return payload if isinstance(payload, dict) else None

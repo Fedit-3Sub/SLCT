@@ -6,6 +6,7 @@ from .views import (
     FeditObjectListView,
     FeditObjectLatestView,
     FeditObjectSeriesView,
+    FeditMetadataView,
 )
 
 urlpatterns = [
@@ -14,5 +15,6 @@ urlpatterns = [
     path('digitaltwins/call', DigitalTwinCallView.as_view(), name='digital-twins-call'),
     path('fedit/objects', FeditObjectListView.as_view(), name='fedit-objects'),
     path('fedit/objects/latest', FeditObjectLatestView.as_view(), name='fedit-object-latest'),
+    path('fedit/metadata', FeditMetadataView.as_view(), name='fedit-metadata'),
     path('fedit/objects/series', FeditObjectSeriesView.as_view(), name='fedit-object-series'),
 ]

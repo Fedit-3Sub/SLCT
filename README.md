@@ -114,7 +114,7 @@ python3 main.py                    # http://0.0.0.0:9901
 
 ## API 호환성
 
-백엔드 REST API는 `{"data": ..., "meta": ...}` 응답 구조와 `/api/bpmns`, `/api/feditscraper/json` 등의 경로를 제공하여, 프론트엔드 `ApiService`를 수정하지 않고 그대로 연동할 수 있도록 설계되었습니다. 백엔드를 수정할 때 이 응답 포맷을 유지해야 합니다. 엔드포인트 표는 [src/backend/README.md](src/backend/README.md)에 정리되어 있습니다.
+백엔드 REST API는 `{"data": ..., "meta": ...}` 응답 구조와 `/api/bpmns` 등의 경로를 제공하여, 프론트엔드 `ApiService`를 수정하지 않고 그대로 연동할 수 있도록 설계되었습니다. 백엔드를 수정할 때 이 응답 포맷을 유지해야 합니다. 엔드포인트 표는 [src/backend/README.md](src/backend/README.md)에 정리되어 있습니다.
 
 ---
 

@@ -1,6 +1,5 @@
 from django.urls import path
 from .views import (
-    FedItScraperJsonView,
     PipelineRunView,
     PipelineExecuteView,
     PipelineRunListView,
@@ -11,7 +10,6 @@ from .views import (
 from .logic_api import LogicListView, LogicInvokeView, LogicSpecView, LogicFeditView, LogicDocsView
 
 urlpatterns = [
-    path('feditscraper/json', FedItScraperJsonView.as_view(), name='feditscraper-json'),
     path('pipelines/run', PipelineRunView.as_view(), name='pipelines-run'),
     path('pipelines/execute', PipelineExecuteView.as_view(), name='pipelines-execute'),
     path('pipelines/runs', PipelineRunListView.as_view(), name='pipelines-runs'),

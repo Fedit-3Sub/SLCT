@@ -1,6 +1,6 @@
 ### core (Django)
 
-이 프로젝트는 기존 프런트엔드가 기대하는 `/api/bpmns`와 `/api/feditscraper/json` 엔드포인트를 Strapi 없이 그대로 제공하기 위해 구성한 Django 서비스입니다.  
+이 프로젝트는 기존 프런트엔드가 기대하는 `/api/bpmns` 엔드포인트를 Strapi 없이 그대로 제공하기 위해 구성한 Django 서비스입니다.  
 호출 경로와 요청/응답 구조를 Strapi와 동일하게 맞춰두었기 때문에, 프런트 코드 변경 없이 서버 주소만 새 인스턴스로 전환할 수 있습니다.
 
 #### 준비
@@ -126,7 +126,6 @@ curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/api/feditscraper/json` | 기존 Strapi가 반환하던 정적 엔티티 데이터 그대로 제공. |
 | GET/POST | `/api/pipelines/run` | 카탈로그 모의 실행 경로. `?id=` 항목의 출력 이름대로 모의 값을 돌려준다(`_mock: true`). |
 | POST | `/api/pipelines/execute` | 서비스 로직 서버 실행. 본문 `{ "uid", "xml", "inputs", "start", "wait" }`. `xml` 이 없으면 저장된 `uid` 다이어그램을 실행. 기본은 비동기(202), `wait: true` 면 끝난 뒤 결과 반환. |
 | GET | `/api/pipelines/runs` | 실행 기록 목록. `?diagram=<uid>`, `?limit=` (기본 20). |

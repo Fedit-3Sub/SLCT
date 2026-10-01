@@ -14,28 +14,6 @@ from .engine import ModelError, parse
 from .models import PipelineRun
 
 
-class FedItScraperJsonView(APIView):
-    def get(self, request):
-        # Minimal stubbed dataset; adjust as needed
-        data = [
-            {
-                "id": "entity_1",
-                "title": "샘플 엔티티 1",
-                "description": "데모 용도의 엔티티",
-                "type": "demo",
-                "reference": "https://example.com/ref/1",
-            },
-            {
-                "id": "entity_2",
-                "title": "샘플 엔티티 2",
-                "description": "데모 용도의 엔티티",
-                "type": "demo",
-                "reference": "https://example.com/ref/2",
-            },
-        ]
-        return Response({"data": data})
-
-
 class PipelineRunView(APIView):
     """카탈로그 모의 실행 경로(`/api/pipelines/run?id=...`).
 

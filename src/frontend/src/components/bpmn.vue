@@ -67,12 +67,20 @@
         </div>
       </section>
 
+      <nav class="bpmn-tabs" role="tablist" aria-label="사이드바">
+        <button
+          v-for="tab in sidebarTabs"
+          :key="tab.id"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === tab.id"
+          :class="['bpmn-tab', { 'bpmn-tab--active': activeTab === tab.id }]"
+          @click="setTab(tab.id)"
+        >{{ tab.label }}</button>
+      </nav>
+
       <section class="bpmn-accordion">
-        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('assistant')">
-          <span>서비스로직 생성 AI</span>
-          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.assistant }]">▼</span>
-        </button>
-        <div class="bpmn-accordion-body" v-show="accordionOpen.assistant">
+        <div class="bpmn-accordion-body" v-show="activeTab === 'ai'">
           <div class="copilot-chat">
             <div class="copilot-chat__toolbar">
               <div class="copilot-toolbar-left">
@@ -221,11 +229,7 @@
       </section>
 
       <section class="bpmn-accordion">
-        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('catalog')">
-          <span>노드 카탈로그</span>
-          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.catalog }]">▼</span>
-        </button>
-        <div class="bpmn-accordion-body" v-show="accordionOpen.catalog">
+        <div class="bpmn-accordion-body" v-show="activeTab === 'catalog'">
           <p class="bpmn-ai-helper">
             연합트윈 시뮬레이터와 연계 서비스를 검색해 다이어그램에 추가합니다.
           </p>
@@ -249,6 +253,7 @@
                 :title="item.description"
                 @click="addCatalogNode(item)"
               >
+                <span :class="['catalog-item__icon', item.icon || 'bpmn-icon-task']" aria-hidden="true"></span>
                 <span class="catalog-item__label">{{ item.label }}</span>
                 <span v-if="item.payload && item.payload.provider" class="catalog-item__meta">
                   {{ item.payload.provider }}
@@ -260,11 +265,7 @@
       </section>
 
       <section class="bpmn-accordion">
-        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('run')">
-          <span>로직 실행</span>
-          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.run }]">▼</span>
-        </button>
-        <div class="bpmn-accordion-body" v-show="accordionOpen.run">
+        <div class="bpmn-accordion-body" v-show="activeTab === 'run'">
           <p class="bpmn-ai-helper">
             서버에서 다이어그램을 순서대로 실행합니다. 노드 호출 결과가 다음 노드의 입력으로 넘어가고
             분기 조건이 평가되며, 노드별 입출력이 기록됩니다.
@@ -351,11 +352,7 @@
       </section>
 
       <section class="bpmn-accordion">
-        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('publish'); if (accordionOpen.publish) loadLogicInfo()">
-          <span>로직 API · 연합트윈 연계</span>
-          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.publish }]">▼</span>
-        </button>
-        <div class="bpmn-accordion-body" v-show="accordionOpen.publish">
+        <div class="bpmn-accordion-body" v-show="activeTab === 'api'">
           <p class="bpmn-ai-helper">
             저장된 로직은 아래 주소로 호출할 수 있습니다. 연합트윈에 시뮬레이션으로 등록하면
             Digital Brain 이 연합객체 데이터를 주기적으로 넣어 이 로직을 실행하고 결과를 저장합니다.
@@ -427,11 +424,8 @@
       </section>
 
       <section class="bpmn-accordion">
-        <button class="bpmn-accordion-header" type="button" @click="toggleAccordion('layout')">
-          <span>레이아웃 최적화</span>
-          <span :class="['bpmn-accordion-icon', { 'bpmn-accordion-icon--open': accordionOpen.layout }]">▼</span>
-        </button>
-        <div class="bpmn-accordion-body" v-show="accordionOpen.layout">
+        <h3 class="bpmn-section-title" v-show="activeTab === 'ai'">레이아웃 최적화</h3>
+        <div class="bpmn-accordion-body" v-show="activeTab === 'ai'">
           <p class="bpmn-ai-helper">
             배치 전략을 선택하면 현재 다이어그램을 분석해 자동으로 정리합니다.
           </p>
@@ -468,7 +462,10 @@
         </div>
       </section>
 
-      <div id="properties" class="bpmn-properties"></div>
+      <div v-show="activeTab === 'props'" class="bpmn-props-wrap">
+        <p v-if="!selectedElementName" class="bpmn-ai-helper bpmn-props-hint">캔버스에서 노드를 클릭하면 이름·실행 설정·입력 매핑·출력을 여기서 편집합니다.</p>
+        <div id="properties" class="bpmn-properties"></div>
+      </div>
     </aside>
   </div>
 </template>
@@ -538,6 +535,15 @@ export default {
       copilotPrompt: "",
       copilotMessages: [],
       aiBusy: false,
+      activeTab: "ai",
+      selectedElementName: "",
+      sidebarTabs: [
+        { id: "props", label: "속성" },
+        { id: "ai", label: "AI 생성" },
+        { id: "catalog", label: "카탈로그" },
+        { id: "run", label: "실행" },
+        { id: "api", label: "API" },
+      ],
       accordionOpen: {
         assistant: true,
         catalog: false,
@@ -627,6 +633,13 @@ export default {
           }
           eventBus.on('diagram.init', 500, () => {
             //toggleMode.toggleMode(true);
+          });
+          // 캔버스에서 노드를 누르면 속성 탭을 연다(빈 바탕을 누르면 그대로 둔다).
+          eventBus.on('element.click', (event) => {
+            const element = event.element;
+            if (!element || !element.parent || element.type === 'label') return;
+            self.selectedElementName = (element.businessObject && element.businessObject.name) || element.id;
+            self.activeTab = 'props';
           });
           eventBus.on('tokenSimulation.playSimulation', (event) => {
             console.log("tokenSimulation.playSimulation", event);
@@ -747,6 +760,7 @@ export default {
       }
 
       self.bpmn.get('canvas').zoom('fit-viewport');
+      self.keepClearOfPalette();
 
       // if XML was imported via our custom menu, persist it once
       if (self.persistent && self.importing && self.diagram && self.diagram.id) {
@@ -1487,6 +1501,38 @@ export default {
         .replace(/__(.+?)__/g, '$1')
         .replace(/`(.+?)`/g, '$1');
     },
+    /**
+     * fit-viewport 는 왼쪽 팔레트를 고려하지 않아 다이어그램 왼쪽이 팔레트에 가린다.
+     * 가려지는 만큼 화면을 오른쪽으로 민다(다이어그램이 화면보다 넓으면 축소도 한 단계).
+     */
+    keepClearOfPalette() {
+      try {
+        const canvas = this.bpmn.get('canvas');
+        const palette = this.$refs.container && this.$refs.container.querySelector('.djs-palette');
+        const container = this.$refs.container && this.$refs.container.getBoundingClientRect();
+        if (!palette || !container) return;
+        const gutter = palette.getBoundingClientRect().right - container.left + 16;
+        const viewbox = canvas.viewbox();
+        const inner = viewbox.inner;
+        const scale = viewbox.scale;
+        const leftOnScreen = (inner.x - viewbox.x) * scale;
+        if (leftOnScreen >= gutter) return;
+        if ((inner.width * scale) + gutter > container.width) {
+          canvas.zoom(scale * (container.width - gutter - 16) / (inner.width * scale + 16));
+          canvas.scroll({ dx: gutter - (canvas.viewbox().inner.x - canvas.viewbox().x) * canvas.viewbox().scale, dy: 0 });
+        } else {
+          canvas.scroll({ dx: gutter - leftOnScreen, dy: 0 });
+        }
+      } catch (e) {
+        // 보정은 보기 편의 기능이라 실패해도 무시한다.
+      }
+    },
+
+    setTab(tab) {
+      this.activeTab = tab;
+      if (tab === "api") this.loadLogicInfo();
+    },
+
     toggleAccordion(key) {
       this.accordionOpen[key] = !this.accordionOpen[key];
     },
@@ -1628,9 +1674,7 @@ export default {
     applyQuickPrompt(prompt) {
       if (this.aiBusy) return;
       this.copilotPrompt = prompt;
-      if (!this.accordionOpen.assistant) {
-        this.toggleAccordion('assistant');
-      }
+      this.activeTab = "ai";
       this.$nextTick(() => {
         this.submitCopilot();
       });
@@ -1931,13 +1975,14 @@ export default {
       ApiService.get('/llm/configs')
         .then(({ data }) => {
           const items = data?.data || [];
-          this.llmOptions = items.map(item => ({
+          // '자동' 은 서버가 연결되는 엔진을 순서대로 고른다(배포 서버의 Ollama → 내장 LLM → 규칙 기반).
+          // 등록된 설정은 서버가 꺼져 있을 수 있어 기본 선택으로 두지 않는다.
+          this.llmOptions = [{ id: 'auto', label: '자동 (연결되는 엔진)' }].concat(items.map(item => ({
             id: item.id,
             label: item.attributes?.name || `LLM #${item.id}`,
             isDefault: item.attributes?.isDefault,
-          }));
-          const defaultOption = this.llmOptions.find(opt => opt.isDefault);
-          this.selectedLlm = defaultOption?.id || (this.llmOptions[0] && this.llmOptions[0].id) || null;
+          })));
+          this.selectedLlm = 'auto';
           this.backendHealthy = true;
         })
         .catch(() => {
@@ -2219,8 +2264,44 @@ export default {
     line-height: 1.2;
   }
   .bpmn-accordion {
+    border-bottom: none;
+  }
+  .bpmn-accordion-body {
+    padding-top: 12px !important;
+  }
+  .bpmn-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    gap: 2px;
+    padding: 0 8px;
+    background: #fafafa;
     border-bottom: 1px solid #e5e7eb;
   }
+  .bpmn-tab {
+    flex: 1;
+    padding: 9px 2px 8px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: #6b7280;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .bpmn-tab:hover { color: #111827; }
+  .bpmn-tab--active { color: #1d4ed8; border-bottom-color: #1d4ed8; }
+  .bpmn-tab:focus-visible { outline: 2px solid #93c5fd; outline-offset: -2px; }
+  .bpmn-section-title {
+    margin: 20px 0 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #374151;
+  }
+  .bpmn-props-wrap { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .bpmn-props-hint { margin: 12px; }
   .bpmn-accordion-header {
     width: 100%;
     padding: 12px;
@@ -2694,6 +2775,14 @@ export default {
   .catalog-item:hover {
     border-color: #4a90d9;
     background: #f2f7fd;
+  }
+
+  .catalog-item__icon {
+    flex-shrink: 0;
+    width: 18px;
+    font-size: 17px;
+    line-height: 1;
+    color: #374151;
   }
 
   .catalog-item__label {

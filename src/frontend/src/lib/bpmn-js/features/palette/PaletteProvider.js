@@ -211,28 +211,7 @@ PaletteProvider.prototype.getPaletteEntries = function() {
     'create.group': createAction(
       'bpmn:Group', 'artifact', 'bpmn-icon-group',
       translate('Create group')
-    ),
-    'create.simulation': {
-			group: 'simulation',
-			className: 'bpmn-icon-service-task',
-			title: translate('Create simulation task'),
-      action: {
-        click: async (event) => {
-					console.log('Create simulation task', event, this._popupMenu);
-					ApiService.query('/digitaltwins').then(resp => {
-						var { meta, data } = resp?.data || {};
-						data = data.map(x => ({ ...x.attributes }));
-
-						console.log(data, meta);
-						this._popupMenu.open({ data, meta, event }, 'bpmn-simulations', event, {
-							title: translate('Select simulation'),
-							width: 400,
-							search: true
-						});
-					});
-				}
-      }
-		}
+    )
   });
 	console.log("actions", actions, new Error().stack);
 

@@ -332,7 +332,7 @@ SERVICES: List[Dict[str, Any]] = [
         "description": "지표가 기준값을 넘는지 판정한다.",
         "inputs": ["지표값", "임계치"],
         "outputs": ["초과여부", "심각도"],
-        "bpmn_type": "bpmn:Task",
+        "bpmn_type": "bpmn:BusinessRuleTask",
     },
     {
         "name": "이상 탐지",
@@ -341,7 +341,7 @@ SERVICES: List[Dict[str, Any]] = [
         "description": "시계열에서 이상 구간을 탐지한다.",
         "inputs": ["시계열 데이터"],
         "outputs": ["이상구간", "점수"],
-        "bpmn_type": "bpmn:Task",
+        "bpmn_type": "bpmn:BusinessRuleTask",
     },
     {
         "name": "SMS 알림 발송",
@@ -382,6 +382,23 @@ SERVICES: List[Dict[str, Any]] = [
 ]
 
 
+# 노드 역할 → BPMN 표준 요소. 편집기는 bpmn-js 기본 아이콘을 그대로 쓰므로,
+# 역할에 맞는 요소 타입을 고르면 아이콘도 표준 표기로 구분된다.
+#   데이터 조회·연계 서비스  → 서비스 작업(톱니)
+#   외부 시뮬레이션 호출     → 호출 활동(굵은 테두리)
+#   판정·분석               → 업무 규칙 작업(표)
+#   알림·통보               → 전송 작업(봉투)
+SIMULATION_TYPE = "bpmn:CallActivity"
+ICONS = {
+    "bpmn:ServiceTask": "bpmn-icon-service-task",
+    "bpmn:CallActivity": "bpmn-icon-call-activity",
+    "bpmn:BusinessRuleTask": "bpmn-icon-business-rule-task",
+    "bpmn:SendTask": "bpmn-icon-send-task",
+    "bpmn:ScriptTask": "bpmn-icon-script-task",
+    "bpmn:Task": "bpmn-icon-task",
+}
+
+
 def simulation_entries() -> List[Dict[str, Any]]:
     """디지털 트윈 소스 형태로 정규화한 시뮬레이션 목록."""
     entries = []
@@ -417,7 +434,7 @@ def all_entries() -> List[Dict[str, Any]]:
             "category": item["category"],
             "url": item["url"],
             "provider": item["provider"],
-            "bpmn_type": "bpmn:ServiceTask",
+            "bpmn_type": SIMULATION_TYPE,
             "twin_id": item["twin_id"],
             "method": item.get("method", ""),
             "inputs": item["inputs"],
@@ -486,6 +503,6 @@ def service_entries() -> List[Dict[str, Any]]:
                 "bpmn:ServiceTask": "bpmn-icon-service-task",
                 "bpmn:SendTask": "bpmn-icon-send-task",
                 "bpmn:Task": "bpmn-icon-task",
-            }.get(item["bpmn_type"], "bpmn-icon-task"),
+            }.get(item["bpmn_type"], ICONS.get(item["bpmn_type"], "bpmn-icon-task")),
         })
     return entries

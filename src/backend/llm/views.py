@@ -71,10 +71,14 @@ class LlmCopilotView(APIView):
 
         # resolve config
         config = None
-        if llm_id:
-            config = LlmConfig.objects.filter(id=llm_id, enabled=True).first()
-        if not config:
-            config = LlmConfig.objects.filter(is_default=True, enabled=True).first() or LlmConfig.objects.filter(enabled=True).first()
+        if llm_id == "auto":
+            # 자동: 등록된 설정 대신 서버 기본 경로(OLLAMA_BASE_URL → 내장 LLM → 규칙 기반)를 쓴다.
+            config = None
+        else:
+            if llm_id:
+                config = LlmConfig.objects.filter(id=llm_id, enabled=True).first()
+            if not config:
+                config = LlmConfig.objects.filter(is_default=True, enabled=True).first() or LlmConfig.objects.filter(enabled=True).first()
 
         # call provider (stubbed service) and log
         result = generate_with_llm(prompt=prompt, config=config, diagram_uid=diagram_uid)

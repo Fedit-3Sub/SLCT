@@ -219,8 +219,8 @@ class UnifiedSearchView(APIView):
                 "label": item.get("name"),
                 # 분류를 세분화해 팔레트/검색에서 도메인별로 묶이도록 한다.
                 "category": f"디지털 트윈 · {item.get('category')}" if item.get("category") else "디지털 트윈",
-                "bpmn_type": "bpmn:ServiceTask",
-                "icon": "bpmn-icon-service-task",
+                "bpmn_type": catalog.SIMULATION_TYPE,
+                "icon": catalog.ICONS[catalog.SIMULATION_TYPE],
                 "description": f"[{twin}] {description}" if twin else description,
                 "payload": {
                     "url": item.get("url"),

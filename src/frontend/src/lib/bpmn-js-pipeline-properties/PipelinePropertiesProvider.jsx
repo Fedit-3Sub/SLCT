@@ -32,7 +32,8 @@ const METHOD_OPTIONS = [
 export default function PipelinePropertiesProvider(propertiesPanel, injector, translate) {
   this.getGroups = function(element) {
     return function(groups) {
-      const isTask = is(element, 'bpmn:Task');
+      // 호출 활동(시뮬레이터 호출)은 bpmn:Task 가 아니지만 같은 실행 설정을 쓴다.
+      const isTask = is(element, 'bpmn:Task') || is(element, 'bpmn:CallActivity');
       if (isTask || is(element, 'bpmn:StartEvent') || is(element, 'bpmn:EndEvent')) {
         groups.push(createSettingsGroup(element, isTask));
       }

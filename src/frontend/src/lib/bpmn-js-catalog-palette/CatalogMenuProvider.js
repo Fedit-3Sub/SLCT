@@ -12,6 +12,22 @@ import { createCatalogExtension } from '../bpmn-js-pipeline-properties/util';
 
 export const PROVIDER_ID = 'bpmn-catalog';
 
+/** BPMN 요소 타입 → bpmn-js 기본 아이콘 클래스. */
+export const TYPE_ICONS = {
+  'bpmn:ServiceTask': 'bpmn-icon-service-task',
+  'bpmn:CallActivity': 'bpmn-icon-call-activity',
+  'bpmn:BusinessRuleTask': 'bpmn-icon-business-rule-task',
+  'bpmn:ScriptTask': 'bpmn-icon-script-task',
+  'bpmn:SendTask': 'bpmn-icon-send-task',
+  'bpmn:ReceiveTask': 'bpmn-icon-receive-task',
+  'bpmn:UserTask': 'bpmn-icon-user-task',
+  'bpmn:Task': 'bpmn-icon-task',
+};
+
+export function iconFor(type) {
+  return TYPE_ICONS[type] || 'bpmn-icon-service-task';
+}
+
 export default function CatalogMenuProvider(
     popupMenu, create, elementFactory, bpmnFactory, moddle, translate) {
   this._popupMenu = popupMenu;
@@ -58,13 +74,10 @@ CatalogMenuProvider.prototype.getPopupMenuEntries = function (target) {
 
     entries[`catalog-item-${index}`] = {
       label: item.label,
-      // 메뉴에서도 항목 성격이 드러나도록 요소 타입에 맞는 아이콘을 쓴다.
-      className: {
-        'bpmn:SendTask': 'bpmn-icon-send-task',
-        'bpmn:ReceiveTask': 'bpmn-icon-receive-task',
-        'bpmn:UserTask': 'bpmn-icon-user-task',
-        'bpmn:Task': 'bpmn-icon-task',
-      }[type] || 'bpmn-icon-service-task',
+      // 메뉴에서도 항목 성격이 드러나도록 요소 타입의 표준 아이콘을 쓴다.
+      className: iconFor(type),
+      // 분류별로 머리글을 달아 한 메뉴에서 찾을 수 있게 한다.
+      group: { id: item.category || '기타', name: item.category || '기타' },
       description: payload.provider || '',
       action: function () {
         const businessObject = self._bpmnFactory.create(type);

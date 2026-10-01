@@ -180,10 +180,12 @@ def _catalog_sources() -> List[Dict[str, Any]]:
             continue  # 실제 시스템을 바로 실행하는 항목(GENIX 등)은 자동 생성에서 제외
         out.append({"name": item["name"], "url": item["url"], "method": item.get("method", "POST"),
                     "outputs": list(item["outputs"]), "inputs": list(item["inputs"]), "kind": "catalog",
-                    "description": item["description"]})
+                    "simulation": True, "description": item["description"]})
     for item in catalog.SERVICES:
         if item["category"] in ("데이터", "분석") or item["api_id"].startswith(("data.collect", "data.preprocess", "analysis.anomaly")):
-            out.append({"name": item["name"], "url": f"{mock.MOCK_PATH}?id={item['api_id']}", "method": "POST",
+            out.append({"name": item["name"], "url": item.get("url") or f"{mock.MOCK_PATH}?id={item['api_id']}",
+                        "method": item.get("method") or "POST",
+                        "analysis": item["api_id"].startswith("analysis."),
                         "outputs": list(item["outputs"]), "inputs": list(item["inputs"]), "kind": "catalog",
                         "description": item["description"]})
     return out
@@ -569,8 +571,11 @@ def build_spec(plan: Dict[str, Any], sources: Optional[Dict[str, Dict[str, Any]]
     source_ids = []
     for name in ordered:
         item = sources[name]
+        # 연합트윈 데이터 조회는 서비스 작업, 시뮬레이터 호출은 호출 활동으로 둔다(표준 아이콘으로 구분).
+        kind = ("callActivity" if item.get("simulation") else
+                "businessRuleTask" if item.get("analysis") else "serviceTask")
         source_ids.append(node(
-            "serviceTask", name, url=item["url"], method=item.get("method", ""),
+            kind, name, url=item["url"], method=item.get("method", ""),
             inputs=[{"name": i} for i in item.get("inputs", [])],
             outputs=[{"name": o} for o in item["outputs"]],
             doc=item.get("description", ""),

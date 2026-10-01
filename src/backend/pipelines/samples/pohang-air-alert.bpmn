@@ -9,12 +9,12 @@
         <pipeline:output name="pm10" /><pipeline:output name="pm25" /><pipeline:output name="temp" /><pipeline:output name="humi" /><pipeline:output name="observedAt" />
       </pipeline:parameters></bpmn:extensionElements>
     </bpmn:serviceTask>
-    <bpmn:task id="Grade" name="대기질 등급 산출">
+    <bpmn:scriptTask id="Grade" name="대기질 등급 산출">
       <bpmn:documentation>환경부 PM10 예보 기준(좋음 0~30, 보통 31~80, 나쁨 81~150, 매우나쁨 151~)으로 등급을 매긴다.</bpmn:documentation>
       <bpmn:extensionElements><pipeline:parameters>
         <pipeline:input name="등급" source="'매우나쁨' if pm10 &gt; 150 else '나쁨' if pm10 &gt; 80 else '보통' if pm10 &gt; 30 else '좋음'" />
       </pipeline:parameters></bpmn:extensionElements>
-    </bpmn:task>
+    </bpmn:scriptTask>
     <bpmn:exclusiveGateway id="NeedAlert" name="경보 필요?" default="Flow_normal" />
     <bpmn:serviceTask id="Signage" name="디지털 사이니지 표출">
       <bpmn:extensionElements><pipeline:parameters>

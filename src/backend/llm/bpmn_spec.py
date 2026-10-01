@@ -45,6 +45,9 @@ NODE_TYPES: Dict[str, str] = {
     "serviceTask": "bpmn:serviceTask",
     "userTask": "bpmn:userTask",
     "sendTask": "bpmn:sendTask",
+    "scriptTask": "bpmn:scriptTask",
+    "businessRuleTask": "bpmn:businessRuleTask",
+    "callActivity": "bpmn:callActivity",
     "receiveTask": "bpmn:receiveTask",
     "exclusiveGateway": "bpmn:exclusiveGateway",
     "parallelGateway": "bpmn:parallelGateway",
@@ -72,6 +75,10 @@ TYPE_ALIASES: Dict[str, str] = {
     "parallelgateway": "parallelGateway",
     "and": "parallelGateway",
     "activity": "task",
+    "script": "scriptTask",
+    "scripttask": "scriptTask",
+    "businessruletask": "businessRuleTask",
+    "callactivity": "callActivity",
 }
 
 EXEC_KEYS = ("url", "method", "inputs", "outputs", "doc", "default_to")

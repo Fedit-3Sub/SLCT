@@ -353,6 +353,25 @@
 
       <section class="bpmn-accordion">
         <div class="bpmn-accordion-body" v-show="activeTab === 'api'">
+          <div class="linkage">
+            <div class="linkage__head">
+              <span class="linkage__title">연계 트윈 현황</span>
+              <span :class="['linkage__count', { 'linkage__count--ok': linkage && linkage.count >= 3 }]">
+                {{ linkage ? `${linkage.count}종` : '…' }}
+              </span>
+            </div>
+            <p class="linkage__goal">이 로직이 메타정보를 연계한 단일 트윈 수 (계획서 목표 3종 이상)</p>
+            <p v-if="linkageError" class="run-error">{{ linkageError }}</p>
+            <ul v-if="linkage && linkage.twins.length" class="linkage__list">
+              <li v-for="twin in linkage.twins" :key="twin.twinId">
+                <b>{{ twin.twinName || twin.twinId }}</b>
+                <span class="linkage__owner">{{ twin.owner }}</span>
+                <div class="linkage__via">{{ twin.via.join(' · ') }}</div>
+              </li>
+            </ul>
+            <p v-else-if="linkage" class="bpmn-ai-helper">아직 연계한 트윈 노드가 없습니다. 카탈로그의 '단일 트윈'·'연합 객체'에서 노드를 추가하세요.</p>
+          </div>
+
           <p class="bpmn-ai-helper">
             저장된 로직은 아래 주소로 호출할 수 있습니다. 연합트윈에 시뮬레이션으로 등록하면
             Digital Brain 이 연합객체 데이터를 주기적으로 넣어 이 로직을 실행하고 결과를 저장합니다.
@@ -479,6 +498,7 @@ import TokenSimulationModule from '@/lib/bpmn-js-token-simulation';
 import BpmnColorPickerModule from '@/lib/bpmn-js-color-picker';
 import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor, GetPipelineParameters} from '@/lib/bpmn-js-pipeline-properties';
 import { createCatalogExtension } from '@/lib/bpmn-js-pipeline-properties/util';
+import { twinRefOf } from '@/lib/bpmn-js-pipeline-properties/twin';
 import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 import CatalogPaletteModule from '@/lib/bpmn-js-catalog-palette';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
@@ -554,6 +574,8 @@ export default {
       editable: true,
       editTokenRequired: false,
       logicInfo: null,
+      linkage: null,
+      linkageError: "",
       feditStatus: null,
       feditObjects: [],
       feditForm: { fdt: "", subjects: [], timeStep: 1 },
@@ -631,6 +653,12 @@ export default {
     const PipelineModule = {
       __init__: [
         [ 'eventBus', 'bpmnjs', 'toggleMode', function(eventBus, bpmnjs, toggleMode) {
+          eventBus.on('commandStack.changed', () => {
+            if (self.activeTab === 'api') {
+              clearTimeout(self.linkageTimer);
+              self.linkageTimer = setTimeout(() => self.loadLinkage(), 600);
+            }
+          });
           if (self.persistent) {
             eventBus.on('commandStack.changed', function() {
               // queue debounced save to backend
@@ -1611,7 +1639,27 @@ export default {
 
     setTab(tab) {
       this.activeTab = tab;
-      if (tab === "api") this.loadLogicInfo();
+      if (tab === "api") {
+        this.loadLogicInfo();
+        this.loadLinkage();
+      }
+    },
+
+    /** 다이어그램의 트윈 노드 참조를 모아 연계한 단일 트윈(메타정보 종)을 조회한다. */
+    async loadLinkage() {
+      this.linkageError = "";
+      try {
+        const registry = this.bpmn.get("elementRegistry");
+        const refs = new Set();
+        registry.forEach((el) => {
+          const ref = twinRefOf(el);
+          if (ref) refs.add(ref);
+        });
+        const resp = await ApiService.query("/twins/linkage", { params: { refs: [...refs].join(",") } });
+        this.linkage = resp.data.data;
+      } catch (e) {
+        this.linkageError = "연계 현황을 불러오지 못했습니다.";
+      }
     },
 
     toggleAccordion(key) {
@@ -3014,4 +3062,65 @@ export default {
     color: #4b5563;
     line-height: 1.5;
   }
+
+  /* 연계 현황 */
+  .linkage { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: #fff; }
+  .linkage__head { display: flex; align-items: baseline; justify-content: space-between; }
+  .linkage__title { font-weight: 700; font-size: 13px; color: #111827; }
+  .linkage__count { font-size: 18px; font-weight: 700; color: #b45309; font-variant-numeric: tabular-nums; }
+  .linkage__count--ok { color: #15803d; }
+  .linkage__goal { margin: 2px 0 6px; font-size: 11px; color: #6b7280; }
+  .linkage__list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+  .linkage__list li { padding: 5px 0; border-top: 1px solid #f3f4f6; }
+  .linkage__owner { margin-left: 6px; font-size: 11px; color: #6b7280; }
+  .linkage__via { font-size: 11px; color: #4b5563; }
+
+  /* 속성 패널: 트윈 정보 */
+  .twin-panel { margin: 4px 12px 10px; font-size: 12px; color: #1f2937; }
+  .twin-muted { color: #6b7280; }
+  .twin-error { color: #b91c1c; }
+  .twin-warn { background: #fef3c7; color: #92400e; padding: 8px 10px; border-radius: 6px; line-height: 1.5; }
+  .twin-head { display: flex; gap: 6px; margin-bottom: 6px; }
+  .twin-badge { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: #e5e7eb; color: #374151; }
+  .twin-badge--src { background: #dbeafe; color: #1e40af; }
+  .twin-badge--live { background: #dcfce7; color: #166534; }
+  .twin-badge--recent { background: #fef9c3; color: #854d0e; }
+  .twin-badge--stale { background: #fee2e2; color: #991b1b; }
+  .twin-meta { display: grid; grid-template-columns: 52px 1fr; gap: 3px 8px; margin: 0 0 8px; }
+  .twin-meta dt { color: #6b7280; font-weight: 600; }
+  .twin-meta dd { margin: 0; word-break: break-all; }
+  .twin-id { display: block; font-family: monospace; font-size: 10.5px; color: #6b7280; }
+  .twin-subtitle { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 8px 0 4px; font-weight: 600; color: #374151; font-size: 11.5px; }
+  .twin-aux { font-weight: 400; color: #6b7280; white-space: nowrap; }
+  .twin-members ul { margin: 0; padding-left: 16px; }
+  .twin-props { max-height: 300px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+  .twin-props table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .twin-props th:nth-child(1), .twin-props td:nth-child(1) { width: 24px; }
+  .twin-props th:nth-child(3), .twin-props td:nth-child(3) { width: 52px; }
+  .twin-props th:nth-child(4), .twin-props td:nth-child(4) { width: 80px; }
+  .twin-props td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .twin-props th { position: sticky; top: 0; background: #f9fafb; text-align: left; font-weight: 600; color: #6b7280; font-size: 11px; padding: 4px 6px; }
+  .twin-props td { padding: 3px 6px; border-top: 1px solid #f3f4f6; }
+  .twin-props tr.is-chosen td { background: #eff6ff; }
+  .twin-pname { font-family: monospace; }
+  .twin-ptype { color: #6b7280; font-size: 11px; }
+  .twin-pval { font-variant-numeric: tabular-nums; text-align: right; }
+  .twin-foot { margin: 4px 0 0; font-size: 10.5px; color: #6b7280; }
+
+  /* 속성 패널: 분기 조건·값 선택 */
+  .cond-panel { margin: 4px 12px 10px; font-size: 12px; }
+  .cond-default { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .cond-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; border-top: 1px solid #f3f4f6; }
+  .cond-row select, .cond-row input, .cond-raw textarea, .pick-row select { width: 100%; box-sizing: border-box; padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; background: #fff; }
+  .cond-line { display: flex; gap: 4px; }
+  .cond-line select { width: 64px; flex: none; }
+  .cond-join { width: 90px !important; }
+  .cond-del { flex: none; width: 26px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; cursor: pointer; }
+  .cond-actions { display: flex; gap: 6px; margin-top: 6px; }
+  .cond-actions button { padding: 3px 10px; border: 1px solid #d1d5db; border-radius: 4px; background: #fff; font-size: 12px; cursor: pointer; }
+  .cond-actions button:disabled { opacity: .5; cursor: not-allowed; }
+  .cond-hint { color: #6b7280; margin: 0 0 6px; }
+  .cond-expr { margin: 8px 0 0; color: #4b5563; word-break: break-all; }
+  .cond-expr code { font-size: 11px; }
+  .pick-row { margin: 4px 12px 0; display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: #374151; }
 </style>

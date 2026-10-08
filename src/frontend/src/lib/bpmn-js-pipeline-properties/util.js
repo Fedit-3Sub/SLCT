@@ -63,6 +63,9 @@ export function createCatalogExtension(moddle, item) {
   if (payload.method) {
     parameterAttrs.method = payload.method;
   }
+  if (payload.twin) {
+    parameterAttrs.twin = payload.twin; // 속성 패널이 트윈 메타정보를 조회하는 데 쓴다
+  }
   const values = [ moddle.create('pipeline:Parameter', parameterAttrs) ];
   (payload.inputs || []).forEach((name) => {
     values.push(moddle.create('pipeline:Input', { name }));

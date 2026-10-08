@@ -12,7 +12,7 @@
 import { PROVIDER_ID } from './CatalogMenuProvider';
 
 // 메뉴에서 분류가 나오는 순서. 목록에 없는 분류는 뒤에 붙는다.
-const ORDER = ['연합트윈 실데이터', '연합트윈 연계', '디지털 트윈', '데이터', '분석', '알림'];
+const ORDER = ['단일 트윈', '연합 객체', '연합트윈 실데이터', '연합트윈 연계', '데이터', '분석', '알림', '디지털 트윈'];
 
 function rank(category) {
   const index = ORDER.findIndex((prefix) => String(category || '').startsWith(prefix));

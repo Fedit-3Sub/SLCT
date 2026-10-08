@@ -44,6 +44,11 @@
           "type": "String"
         },
         {
+          "name": "twin",
+          "isAttr": true,
+          "type": "String"
+        },
+        {
           "name": "method",
           "isAttr": true,
           "type": "String"

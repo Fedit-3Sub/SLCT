@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from . import brain, catalog, fedit_client
+from . import brain, catalog, fedit_client, twins
 from .models import DigitalTwinSource, DigitalTwinCallLog
 from .serializers import DigitalTwinSourceSerializer, DigitalTwinCallLogSerializer
 import time
@@ -188,3 +188,42 @@ class FeditMetadataResourceView(APIView):
             **{k: first.get(k) for k in ("id", "name", "description", "keywords", "owner", "accessUrl", "digitalTwinId")},
         }
         return Response({"data": data})
+
+
+# ---- 트윈 노드(메타정보·속성) -------------------------------------------------
+
+class TwinListView(APIView):
+    """노드로 쓸 수 있는 트윈 목록(단일 트윈 디지털객체 + 연합 객체)."""
+
+    def get(self, request):
+        entries, _ = twins.catalog(refresh=request.query_params.get("refresh") in ("1", "true"))
+        return Response({"data": entries, "meta": {"count": len(entries), "connector": twins.connector_url(),
+                                                   "brain": brain.base_url()}})
+
+
+class TwinDetailView(APIView):
+    """트윈 메타정보와 속성 목록(이름·타입·지금 값)."""
+
+    def get(self, request, kind: str, a: str, b: str):
+        try:
+            return Response({"data": twins.detail(f"{kind}:{a}:{b}")})
+        except (twins.TwinError, brain.BrainError) as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+class TwinLatestView(APIView):
+    """트윈 최신값(평평한 이름). 트윈 노드를 실행하면 이 경로가 호출된다."""
+
+    def get(self, request, kind: str, a: str, b: str):
+        try:
+            return Response({"data": twins.latest(f"{kind}:{a}:{b}")})
+        except (twins.TwinError, brain.BrainError) as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+class TwinLinkageView(APIView):
+    """로직이 연계한 단일 트윈 목록. ?refs=do:…,fdo:… (쉼표 구분)."""
+
+    def get(self, request):
+        refs = [r for r in (request.query_params.get("refs") or "").split(",") if r.strip()]
+        return Response({"data": twins.linkage(refs)})

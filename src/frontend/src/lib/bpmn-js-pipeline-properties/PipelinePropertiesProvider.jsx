@@ -7,7 +7,11 @@ import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
 
 import { without } from 'min-dash';
 
-import { createElement, getExtension } from './util';
+import { createElement } from './util';
+import { getParametersExtension, getEntries, getParameter, ensureParametersExtension, updateParameter } from './model';
+import { twinRefOf, isMockNode, upstreamValues } from './twin';
+import { TwinInfoEntry, MockNoticeEntry } from './parts/TwinPanel';
+import { ConditionEntry } from './parts/ConditionPanel';
 
 const LOW_PRIORITY = 500;
 
@@ -34,12 +38,31 @@ export default function PipelinePropertiesProvider(propertiesPanel, injector, tr
     return function(groups) {
       // 호출 활동(시뮬레이터 호출)은 bpmn:Task 가 아니지만 같은 실행 설정을 쓴다.
       const isTask = is(element, 'bpmn:Task') || is(element, 'bpmn:CallActivity');
+      // 트윈 정보는 이름 바로 아래에 둔다(이 노드가 무엇인지가 가장 먼저 보이도록).
+      if (isTask && twinRefOf(element)) {
+        const at = groups.findIndex(g => g.id === 'general');
+        groups.splice(at + 1, 0, {
+          id: 'pipeline-twin',
+          label: '트윈 정보 · 속성',
+          shouldOpen: true,
+          entries: [ { id: 'pipeline-twin-info', element, component: TwinInfoEntry } ],
+        });
+      }
       if (isTask || is(element, 'bpmn:StartEvent') || is(element, 'bpmn:EndEvent')) {
         groups.push(createSettingsGroup(element, isTask));
       }
       if (isTask) {
         groups.push(createListGroup(element, injector, 'inputs'));
         groups.push(createListGroup(element, injector, 'outputs'));
+      }
+      if (is(element, 'bpmn:SequenceFlow')) {
+        const at = groups.findIndex(g => g.id === 'general');
+        groups.splice(at + 1, 0, {
+          id: 'pipeline-condition',
+          label: '분기 조건',
+          shouldOpen: true,
+          entries: [ { id: 'pipeline-condition-entry', element, component: ConditionEntry } ],
+        });
       }
       return groups;
     };
@@ -51,78 +74,7 @@ export default function PipelinePropertiesProvider(propertiesPanel, injector, tr
 PipelinePropertiesProvider.$inject = [ 'propertiesPanel', 'injector', 'translate' ];
 
 
-// 모델 접근 ////////
-
-function getParametersExtension(element) {
-  return getExtension(getBusinessObject(element), 'pipeline:Parameters');
-}
-
-function getEntries(element, type) {
-  const extension = getParametersExtension(element);
-  return extension ? extension.get('values').filter(e => e.$instanceOf(type)) : [];
-}
-
-function getParameter(element) {
-  return getEntries(element, 'pipeline:Parameter')[0];
-}
-
-/**
- * extensionElements → pipeline:Parameters 가 없으면 만드는 명령을 모은다.
- * 만든(또는 기존) Parameters 요소와 명령 목록을 돌려준다.
- */
-function ensureParametersExtension(element, bpmnFactory) {
-  const commands = [];
-  const businessObject = getBusinessObject(element);
-
-  let extensionElements = businessObject.get('extensionElements');
-  if (!extensionElements) {
-    extensionElements = createElement('bpmn:ExtensionElements', { values: [] }, businessObject, bpmnFactory);
-    commands.push({
-      cmd: 'element.updateModdleProperties',
-      context: { element, moddleElement: businessObject, properties: { extensionElements } }
-    });
-  }
-
-  let extension = getExtension(businessObject, 'pipeline:Parameters');
-  if (!extension) {
-    extension = createElement('pipeline:Parameters', { values: [] }, extensionElements, bpmnFactory);
-    commands.push({
-      cmd: 'element.updateModdleProperties',
-      context: {
-        element,
-        moddleElement: extensionElements,
-        properties: { values: [ ...extensionElements.get('values'), extension ] }
-      }
-    });
-  }
-  return { extension, commands };
-}
-
-/** 실행 설정(pipeline:Parameter) 속성을 바꾼다. 없으면 만든다. */
-function updateParameter(element, injector, properties) {
-  const bpmnFactory = injector.get('bpmnFactory');
-  const commandStack = injector.get('commandStack');
-
-  let parameter = getParameter(element);
-  if (parameter) {
-    commandStack.execute('element.updateModdleProperties', { element, moddleElement: parameter, properties });
-    return;
-  }
-
-  const { extension, commands } = ensureParametersExtension(element, bpmnFactory);
-  parameter = createElement('pipeline:Parameter', properties, extension, bpmnFactory);
-  commands.push({
-    cmd: 'element.updateModdleProperties',
-    context: {
-      element,
-      moddleElement: extension,
-      // 실행기·토큰 시뮬레이션은 첫 parameter 를 읽으므로 맨 앞에 둔다.
-      properties: { values: [ parameter, ...extension.get('values') ] }
-    }
-  });
-  commandStack.execute('properties-panel.multi-command-executor', commands);
-}
-
+// 모델 접근은 model.js 에 둔다(트윈·조건 패널과 함께 쓴다).
 
 // 실행 설정 그룹 ////////
 
@@ -139,18 +91,18 @@ const SETTINGS = [
 ];
 
 function createSettingsGroup(element, isTask) {
-  return {
-    id: 'pipeline',
-    label: '실행 설정',
-    entries: SETTINGS
-      .filter(s => isTask || !s.taskOnly)
-      .map(setting => ({
-        id: `pipeline-${setting.key}`,
-        element,
-        setting,
-        component: setting.select ? MethodEntry : SettingEntry,
-      })),
-  };
+  const entries = SETTINGS
+    .filter(s => isTask || !s.taskOnly)
+    .map(setting => ({
+      id: `pipeline-${setting.key}`,
+      element,
+      setting,
+      component: setting.select ? MethodEntry : SettingEntry,
+    }));
+  if (isMockNode(element)) {
+    entries.unshift({ id: 'pipeline-mock-notice', element, component: MockNoticeEntry });
+  }
+  return { id: 'pipeline', label: '실행 설정', entries };
 }
 
 function SettingEntry(props) {
@@ -281,6 +233,37 @@ function ListFieldEntry(props) {
   const { element, id, entry, field } = props;
   const commandStack = useService('commandStack');
   const debounce = useService('debounceInput');
+
+  const set = (value) => commandStack.execute('element.updateModdleProperties', {
+    element,
+    moddleElement: entry,
+    properties: { [field.key]: value || undefined }
+  });
+
+  // 값 식은 앞 노드들이 내놓는 값(트윈 속성 등)에서 고를 수 있게 한다.
+  if (field.key === 'source') {
+    const values = upstreamValues(element);
+    const current = entry.get('source') || '';
+    return <div>
+      { values.length ? <div className="pick-row">
+        <label htmlFor={ `${id}-pick` }>앞 노드 값에서 선택</label>
+        <select id={ `${id}-pick` } value={ values.some(v => v.expr === current) ? current : '' }
+          onChange={ (e) => e.target.value && set(e.target.value) }>
+          <option value="">— 선택 —</option>
+          { values.map(v => <option key={ v.expr } value={ v.expr }>{ v.label }</option>) }
+        </select>
+      </div> : null }
+      <TextFieldEntry
+        id={ id }
+        element={ entry }
+        label={ field.label }
+        description={ field.description }
+        getValue={ () => entry.get(field.key) || '' }
+        setValue={ set }
+        debounce={ debounce }
+      />
+    </div>;
+  }
 
   return <TextFieldEntry
     id={ id }

@@ -5,7 +5,7 @@ from typing import List, Dict
 from django.db.models import Q
 from urllib.parse import urlencode
 
-from digitaltwins import brain, catalog, fedit_client
+from digitaltwins import brain, catalog, fedit_client, twins
 from digitaltwins.models import DigitalTwinSource
 from bpmns.models import BpmnDiagram
 
@@ -235,25 +235,34 @@ class UnifiedSearchView(APIView):
         return out
 
     def _fedit_objects(self) -> List[Dict]:
-        """Digital Brain 연합객체를 실데이터 조회 노드로 내놓는다."""
+        """연합트윈 프레임워크에 등록된 트윈(단일 트윈 디지털객체·연합 객체)을 노드로 내놓는다.
+
+        노드에는 트윈 참조(twin)를 담아, 속성 패널이 메타정보와 속성 목록을 보여주고
+        사용자가 고른 속성을 출력으로 삼게 한다. 처음 놓을 때는 숫자 속성 몇 개를 고른다.
+        """
+        entries, _ = twins.catalog()
         out = []
-        for item in brain.object_catalog():
-            query = urlencode({"fdt": item["fdt_id"], "fdo": item["fdo_id"]})
+        for item in entries:
+            single = item["kind"] == "do"
+            category = f"단일 트윈 · {item['twinName']}" if single else f"연합 객체 · {item['twinName']}"
+            fresh = {"live": "실시간", "recent": "최근", "stale": "갱신 멈춤"}.get(item["freshness"], "")
             out.append({
-                "id": f"fedit::{item['fdt_id']}::{item['fdo_id']}",
-                "label": f"{item['fdo_name']} 최신 데이터",
-                "category": f"연합트윈 실데이터 · {item['fdt_name']}",
+                "id": f"twin::{item['ref']}",
+                "label": item["name"],
+                "category": category,
                 "bpmn_type": "bpmn:ServiceTask",
                 "icon": "bpmn-icon-service-task",
-                "description": f"[{item['fdt_name']}] {item['fdo_name']} 연합객체의 최신 동기화 데이터 (최근 {item.get('rowtime') or '-'})",
+                "description": f"[{item['twinName']}] {item['name']} · {item.get('owner') or '소유 미상'} · {fresh}",
                 "payload": {
-                    "url": f"/api/fedit/objects/latest?{query}",
+                    "url": twins.latest_url(item["ref"]),
                     "method": "GET",
-                    "source": "fedit-brain",
-                    "twinId": item["fdt_id"],
-                    "provider": "연합트윈 Digital Brain",
+                    "twin": item["ref"],
+                    "source": "fedit-connector" if single else "fedit-brain",
+                    "twinId": item["twinId"],
+                    "provider": f"{item.get('owner') or ''} · {fresh}".strip(" ·"),
+                    "freshness": item["freshness"],
                     "inputs": [],
-                    "outputs": item["outputs"],
+                    "outputs": item["numeric"][:twins.DEFAULT_OUTPUTS],
                 },
             })
         if out:

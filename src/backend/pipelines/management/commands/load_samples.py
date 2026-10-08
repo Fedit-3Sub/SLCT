@@ -15,6 +15,7 @@ from bpmns.models import BpmnDiagram
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
 TITLES = {
     "pohang-air-alert": "포항 대기질 경보 (연합트윈 실데이터)",
+    "twin-air-wind-alert": "포항 대기·풍속 경보 (트윈 노드 2종 연계)",
 }
 
 

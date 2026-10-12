@@ -25,7 +25,11 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+import time
+
 import requests
+
+from . import calllog
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +62,8 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
     if not is_configured():
         return None
     url = f"{base_url()}/meta/api/v1{path}"
+    source = "2세부 메타데이터 저장소"
+    started = time.monotonic()
     try:
         response = requests.get(
             url,
@@ -66,20 +72,25 @@ def _get(path: str, params: Optional[Dict[str, Any]] = None) -> Optional[Any]:
             timeout=_timeout(),
         )
     except requests.RequestException as exc:
-        logger.warning("연합트윈 메타데이터 요청 실패(%s): %s", path, exc)
+        calllog.record(source, "GET", url, params=params, error=exc.__class__.__name__, started=started)
         return None
 
     if response.status_code == 401:
-        logger.warning("연합트윈 메타데이터 인증 실패 — 토큰을 확인하세요.")
+        calllog.record(source, "GET", url, params=params, status=401, error="인증 실패 — 토큰을 확인하세요",
+                       started=started)
         return None
     if not response.ok:
-        logger.warning("연합트윈 메타데이터 응답 오류(%s): HTTP %s", path, response.status_code)
+        calllog.record(source, "GET", url, params=params, status=response.status_code,
+                       error=f"HTTP {response.status_code}", started=started)
         return None
     try:
-        return response.json()
+        body = response.json()
     except ValueError:
-        logger.warning("연합트윈 메타데이터 응답을 JSON 으로 해석할 수 없음(%s)", path)
+        calllog.record(source, "GET", url, params=params, status=response.status_code, error="JSON 아님",
+                       started=started)
         return None
+    calllog.record(source, "GET", url, params=params, status=response.status_code, body=body, started=started)
+    return body
 
 
 def _pick(item: Dict[str, Any], keys) -> str:

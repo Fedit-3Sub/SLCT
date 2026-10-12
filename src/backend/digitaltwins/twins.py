@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
-from . import brain
+from . import brain, calllog
 
 logger = logging.getLogger(__name__)
 
@@ -44,16 +44,23 @@ def connector_url() -> str:
 
 
 def _get(url: str, params: Optional[Dict[str, Any]] = None) -> Any:
+    started = time.monotonic()
     try:
         resp = requests.get(url, params=params or {}, timeout=8)
     except requests.RequestException as exc:
+        calllog.record("Digital Connector", "GET", url, params=params, error=exc.__class__.__name__, started=started)
         raise TwinError(f"연합트윈 프레임워크에 접속하지 못했습니다: {exc.__class__.__name__}") from exc
     if resp.status_code >= 400:
+        calllog.record("Digital Connector", "GET", url, params=params, status=resp.status_code,
+                       error=f"HTTP {resp.status_code}", started=started)
         raise TwinError(f"연합트윈 프레임워크 응답 오류 HTTP {resp.status_code}")
     try:
         data = resp.json()
     except ValueError as exc:
+        calllog.record("Digital Connector", "GET", url, params=params, status=resp.status_code,
+                       error="JSON 아님", started=started)
         raise TwinError("연합트윈 프레임워크 응답이 JSON 이 아닙니다.") from exc
+    calllog.record("Digital Connector", "GET", url, params=params, status=resp.status_code, body=data, started=started)
     if isinstance(data, dict) and data.get("code") and data.get("msg") and "data" not in data:
         raise TwinError(f"연합트윈 프레임워크: {data.get('msg')}")
     return data
@@ -259,36 +266,52 @@ def catalog(refresh: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, Dict
         stamp, entries, index = _cache
         if not refresh and entries and time.time() - stamp < CATALOG_TTL:
             return entries, index
-        try:
-            dts = digital_twins()
-        except TwinError as exc:
-            logger.info("트윈 목록을 가져오지 못했습니다: %s", exc)
+        with calllog.bulk("트윈 목록 갱신"):
+            built = _build_catalog()
+        if built is None:
             return entries, index
-        pairs, index = [], {}
-        for dt in dts:
-            try:
-                for do in digital_objects(dt["digital_twin_id"]):
-                    pairs.append((dt, do))
-                    index[do["digital_object_id"]] = {
-                        "twinId": dt["digital_twin_id"], "twinName": dt.get("digital_twin_name") or "",
-                        "owner": dt.get("owner") or "", "objectName": do.get("digital_object_name") or "",
-                    }
-            except TwinError:
-                continue
-        with ThreadPoolExecutor(max_workers=12) as pool:
-            do_entries = [e for e in pool.map(lambda p: _do_entry(*p), pairs) if e]
-        fdo_entries = []
-        try:
-            for fdt in brain.federated_twins():
-                for fdo in brain.federated_objects(fdt.get("federated_digital_twin_id", "")):
-                    entry = _fdo_entry(fdt, fdo, index)
-                    if entry:
-                        fdo_entries.append(entry)
-        except brain.BrainError:
-            pass
-        entries = do_entries + fdo_entries
+        entries, index = built
         _cache = (time.time(), entries, index)
         return entries, index
+
+
+def _build_catalog() -> Optional[Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]]:
+    """프레임워크에서 트윈 목록을 새로 만든다. 단일 트윈 목록을 못 받으면 None."""
+    try:
+        dts = digital_twins()
+    except TwinError as exc:
+        logger.info("트윈 목록을 가져오지 못했습니다: %s", exc)
+        return None
+    pairs, index = [], {}
+    for dt in dts:
+        try:
+            for do in digital_objects(dt["digital_twin_id"]):
+                pairs.append((dt, do))
+                index[do["digital_object_id"]] = {
+                    "twinId": dt["digital_twin_id"], "twinName": dt.get("digital_twin_name") or "",
+                    "owner": dt.get("owner") or "", "objectName": do.get("digital_object_name") or "",
+                }
+        except TwinError:
+            continue
+    stats = calllog.current_bulk()
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        do_entries = [e for e in pool.map(lambda p: _bulk_do_entry(p, stats), pairs) if e]
+    fdo_entries = []
+    try:
+        for fdt in brain.federated_twins():
+            for fdo in brain.federated_objects(fdt.get("federated_digital_twin_id", "")):
+                entry = _fdo_entry(fdt, fdo, index)
+                if entry:
+                    fdo_entries.append(entry)
+    except brain.BrainError:
+        pass
+    return do_entries + fdo_entries, index
+
+
+def _bulk_do_entry(pair, stats):
+    # 작업 스레드의 호출도 바깥 bulk 의 요약에 넣고, 줄마다의 기록은 DEBUG 로 내린다.
+    with calllog.bulk_worker(stats):
+        return _do_entry(*pair)
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +385,40 @@ def detail(ref: str) -> Dict[str, Any]:
         "properties": properties,
         "latestUrl": latest_url(ref),
     }
+
+
+_LATEST_URL = re.compile(r"^/api/twins/(do|fdo)/([^/]+)/([^/?]+)/latest")
+_BRAIN_URL = re.compile(r"^/api/fedit/objects/latest\?(.*)$")
+
+
+def refs_in_xml(xml: str) -> List[str]:
+    """다이어그램에서 트윈 노드의 참조를 뽑는다(편집기 twin.js 의 twinRefOf 와 같은 규칙)."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import parse_qs, unquote
+
+    try:
+        root = ET.fromstring(xml or "")
+    except ET.ParseError:
+        return []
+    refs: List[str] = []
+    for el in root.iter():
+        if not el.tag.endswith("}parameter") or el.get("url") is None and el.get("twin") is None:
+            continue
+        ref = el.get("twin") or ""
+        url = el.get("url") or ""
+        if not ref:
+            m = _LATEST_URL.match(url)
+            if m:
+                ref = f"{m.group(1)}:{unquote(m.group(2))}:{unquote(m.group(3))}"
+        if not ref:
+            m = _BRAIN_URL.match(url)
+            if m:
+                q = parse_qs(m.group(1))
+                if q.get("fdt") and q.get("fdo"):
+                    ref = f"fdo:{q['fdt'][0]}:{q['fdo'][0]}"
+        if ref:
+            refs.append(ref)
+    return list(dict.fromkeys(refs))
 
 
 def linkage(refs: List[str]) -> Dict[str, Any]:

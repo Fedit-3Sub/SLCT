@@ -11,6 +11,8 @@ from typing import Any, Dict, Optional
 from django.db import close_old_connections
 from django.utils import timezone
 
+from digitaltwins import calllog, twins
+
 from .engine import Engine, StepRecord
 from .invoker import http_invoker
 from .models import PipelineRun, PipelineStep
@@ -79,7 +81,31 @@ def execute(run: PipelineRun) -> PipelineRun:
         run.error = f"실행기 내부 오류: {exc}"
     run.finished_at = timezone.now()
     run.save(update_fields=["status", "error", "variables", "result", "finished_at"])
+    _log_linkage(run)
     return run
+
+
+def _log_linkage(run: PipelineRun, background: bool = True) -> None:
+    """이 실행이 메타정보를 연계한 단일 트윈을 로그에 남긴다(트윈 노드가 있을 때만).
+
+    트윈 목록 캐시가 비어 있으면 목록을 새로 받느라 몇 초 걸리므로, 실행 응답을
+    늦추지 않도록 따로 스레드에서 남긴다.
+    """
+    refs = twins.refs_in_xml(run.xml)
+    if not refs:
+        return
+    run_id, diagram = run.pk, run.diagram_uid
+
+    def target() -> None:
+        try:
+            calllog.run_summary(run_id, diagram, twins.linkage(refs))
+        except Exception:  # 기록 실패가 실행 결과에 영향을 주면 안 된다.
+            logger.debug("연계 트윈 요약을 남기지 못했습니다 (run=%s)", run_id, exc_info=True)
+
+    if background:
+        threading.Thread(target=target, name=f"pipeline-linkage-{run_id}", daemon=True).start()
+    else:
+        target()
 
 
 def execute_in_background(run_id: int) -> None:

@@ -28,6 +28,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+from . import calllog
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://220.124.222.84:1213"
@@ -52,16 +54,25 @@ def _timeout() -> float:
 
 def _request(method: str, path: str, **kwargs) -> Any:
     url = f"{base_url()}/fedit/v1{path}"
+    params = kwargs.get("params")
+    started = time.monotonic()
     try:
         resp = requests.request(method, url, timeout=_timeout(), **kwargs)
     except requests.RequestException as exc:
+        calllog.record("Digital Brain", method, url, params=params, error=exc.__class__.__name__, started=started)
         raise BrainError(f"Digital Brain 에 접속하지 못했습니다: {exc.__class__.__name__}") from exc
     if resp.status_code >= 400:
+        calllog.record("Digital Brain", method, url, params=params, status=resp.status_code,
+                       error=f"HTTP {resp.status_code}", started=started)
         raise BrainError(f"Digital Brain 응답 오류 HTTP {resp.status_code}: {resp.text[:200]}")
     try:
-        return resp.json()
+        body = resp.json()
     except ValueError as exc:
+        calllog.record("Digital Brain", method, url, params=params, status=resp.status_code,
+                       error="JSON 아님", started=started)
         raise BrainError("Digital Brain 응답이 JSON 이 아닙니다.") from exc
+    calllog.record("Digital Brain", method, url, params=params, status=resp.status_code, body=body, started=started)
+    return body
 
 
 def _as_list(data: Any) -> List[Dict[str, Any]]:
@@ -250,18 +261,31 @@ def object_catalog(refresh: bool = False) -> List[Dict[str, Any]]:
         stamp, cached = _catalog_cache
         if not refresh and cached and time.time() - stamp < CATALOG_TTL:
             return cached
-        try:
-            twins = federated_twins()
-        except BrainError as exc:
-            logger.info("Digital Brain 카탈로그를 가져오지 못했습니다: %s", exc)
+        with calllog.bulk("연합객체 목록 갱신"):
+            entries = _build_object_catalog()
+        if entries is None:
             return cached
-        pairs = []
-        for fdt in twins:
-            try:
-                pairs += [(fdt, fdo) for fdo in federated_objects(fdt.get("federated_digital_twin_id", ""))]
-            except BrainError:
-                continue
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            entries = [e for e in pool.map(lambda p: _object_entry(*p), pairs) if e]
         _catalog_cache = (time.time(), entries)
         return entries
+
+
+def _build_object_catalog() -> Optional[List[Dict[str, Any]]]:
+    try:
+        twins = federated_twins()
+    except BrainError as exc:
+        logger.info("Digital Brain 카탈로그를 가져오지 못했습니다: %s", exc)
+        return None
+    pairs = []
+    for fdt in twins:
+        try:
+            pairs += [(fdt, fdo) for fdo in federated_objects(fdt.get("federated_digital_twin_id", ""))]
+        except BrainError:
+            continue
+    stats = calllog.current_bulk()
+
+    def entry(pair):
+        with calllog.bulk_worker(stats):
+            return _object_entry(*pair)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return [e for e in pool.map(entry, pairs) if e]

@@ -411,3 +411,49 @@ class ExternalWriteGuardTests(SimpleTestCase):
             req.return_value = mock.Mock(status_code=200, text="{}", json=lambda: {})
             http_invoker(config, {"a": 1})
             req.assert_called_once()
+
+
+def _inline_thread(target=None, name=None, daemon=None):
+    """테스트에서 백그라운드 스레드를 바로 실행한다."""
+    class _T:
+        def start(self):
+            target()
+    return _T()
+
+
+class RunLinkageLogTests(TestCase):
+    """실행할 때마다 연계한 단일 트윈 요약이 운영 로그에 남는지."""
+
+    XML = """<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:pipeline="pipeline://">
+      <bpmn:process id="P" isExecutable="true">
+        <bpmn:startEvent id="S"/>
+        <bpmn:scriptTask id="T"><bpmn:extensionElements><pipeline:parameters>
+          <pipeline:parameter name="t" twin="do:DT-1:DO-1"/>
+          <pipeline:input name="x" value="1"/></pipeline:parameters></bpmn:extensionElements></bpmn:scriptTask>
+        <bpmn:endEvent id="E"/>
+        <bpmn:sequenceFlow id="F1" sourceRef="S" targetRef="T"/>
+        <bpmn:sequenceFlow id="F2" sourceRef="T" targetRef="E"/>
+      </bpmn:process></bpmn:definitions>"""
+
+    def test_summary_line(self):
+        from unittest import mock
+        from . import runner
+
+        run = PipelineRun.objects.create(diagram_uid="demo", xml=self.XML, inputs={})
+        linkage = {"count": 1, "twins": [{"twinId": "DT-1", "twinName": "대기 트윈", "owner": "keti", "via": ["대기"]}]}
+        with mock.patch("digitaltwins.twins.linkage", return_value=linkage) as link, \
+             mock.patch.object(runner.threading, "Thread", side_effect=_inline_thread), \
+             self.assertLogs("slct.integration", "INFO") as logs:
+            runner.execute(run)
+        link.assert_called_once_with(["do:DT-1:DO-1"])
+        self.assertIn(f"[메타정보 연계] 실행 #{run.pk} demo: 단일 트윈 1종", logs.output[-2])
+        self.assertIn("1. 대기 트윈 | 트윈 ID DT-1 | 소유 keti | 연계 노드 대기", logs.output[-1])
+
+    def test_no_twin_nodes_no_summary(self):
+        from unittest import mock
+        from . import runner
+
+        run = PipelineRun.objects.create(diagram_uid="plain", xml=self.XML.replace(' twin="do:DT-1:DO-1"', ''), inputs={})
+        with mock.patch("digitaltwins.twins.linkage") as link:
+            runner.execute(run)
+        link.assert_not_called()

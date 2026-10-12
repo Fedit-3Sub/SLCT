@@ -36,7 +36,8 @@ class OllamaFallbackTests(SimpleTestCase):
              mock.patch.object(ollama_client, "pick_model", return_value="qwen2.5:1.5b-instruct"), \
              mock.patch.object(services, "remote_provider_available", return_value=False), \
              mock.patch.object(local_llm, "is_available", return_value=False), \
-             mock.patch.object(ollama_client, "generate_plan", return_value=plan) as gen:
+             mock.patch.object(ollama_client, "generate_plan", return_value=plan) as gen, \
+             mock.patch("digitaltwins.brain.object_catalog", return_value=[]):  # 테스트가 실제 Brain 을 부르지 않게
             selected = services._select_engine("미세먼지가 나쁘면 알려줘", config)
         self.assertEqual(selected["engine"], "ollama")
         self.assertEqual(gen.call_args.args[1], "qwen2.5:1.5b-instruct")

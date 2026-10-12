@@ -190,6 +190,24 @@ curl -L -o models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
 - 단일 트윈은 Digital Connector(`FEDIT_CONNECTOR_URL`, 기본 `http://220.124.222.84:1219`), 연합 객체는 Digital Brain 에서 조회한다.
 - 분기 조건은 편집기에서 앞 노드 출력(트윈 속성)을 골라 만들며 `Node_2.pm10 > 80 and Node_3.WIND_SPEED < 2` 같은 식으로 저장된다.
 
+#### 연합트윈 API 호출 기록 (로그)
+
+Digital Connector · Digital Brain · 2세부 메타데이터 저장소를 호출할 때마다 `slct.integration` 로거가 표준 출력에 한 줄씩 남긴다. 토큰과 응답 본문은 남기지 않는다.
+
+```bash
+docker compose logs -f backend | grep -E '연합트윈 API|메타정보 연계'
+```
+
+```
+INFO slct.integration [연합트윈 API] Digital Connector GET http://…:1219/fedit/v1/digital-twins/KR-01-O84213-20260002/digital-objects/KR-104111-0024/data?count=1 → 201 (1건, 35ms)
+INFO slct.integration [메타정보 연계] 실행 #2 twin-air-wind-alert: 단일 트윈 2종 (메타정보 출처: Digital Connector 단일 트윈 등록 정보)
+INFO slct.integration [메타정보 연계]   1. 포항 환경 통합 디지털 트윈 | 트윈 ID KR-01-O84213-20260002 | 소유 keti | 연계 노드 포항 대기 환경 관측 객체
+```
+
+- 로직을 실행하면 트윈 노드가 부른 조회가 한 줄씩, 실행이 끝나면 연계한 단일 트윈 요약이 남는다(요약은 실행 응답을 늦추지 않도록 따로 남긴다).
+- 트윈 목록 캐시를 채우는 일괄 조회는 요약 한 줄(`트윈 목록 갱신: 호출 N건, 실패 M건`)만 남긴다. 줄마다 보려면 `SLCT_LOG_LEVEL=DEBUG`.
+- 실패한 호출은 WARNING 으로 남는다.
+
 #### 외부 시스템 보호
 
 서비스 로직 도구는 다른 기관 시스템에 기록을 남기지 않는 것을 기본으로 한다.

@@ -102,3 +102,24 @@ REST_FRAMEWORK = {
         'core.edit_token.EditTokenPermission',
     ]
 }
+
+# 로그는 표준 출력으로 낸다(컨테이너에서는 `docker compose logs backend` 로 본다).
+# slct.integration: 연합트윈 프레임워크 API 호출 기록(어떤 트윈 메타정보를 조회했는지).
+SLCT_LOG_LEVEL = os.environ.get('SLCT_LOG_LEVEL', 'INFO').upper()
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'plain': {'format': '%(asctime)s %(levelname)s %(name)s %(message)s', 'datefmt': '%Y-%m-%d %H:%M:%S'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+    },
+    'root': {'handlers': ['console'], 'level': 'WARNING'},
+    'loggers': {
+        'slct.integration': {'handlers': ['console'], 'level': SLCT_LOG_LEVEL, 'propagate': False},
+        'pipelines': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'digitaltwins': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        'llm': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}

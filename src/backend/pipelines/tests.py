@@ -445,9 +445,9 @@ class RunLinkageLogTests(TestCase):
              mock.patch.object(runner.threading, "Thread", side_effect=_inline_thread), \
              self.assertLogs("slct.integration", "INFO") as logs:
             runner.execute(run)
-        link.assert_called_once_with(["do:DT-1:DO-1"])
+        link.assert_called_once_with(["do:DT-1:DO-1"], {"do:DT-1:DO-1": "T"})
         self.assertIn(f"[메타정보 연계] 실행 #{run.pk} demo: 단일 트윈 1종", logs.output[-2])
-        self.assertIn("1. 대기 트윈 | 트윈 ID DT-1 | 소유 keti | 연계 노드 대기", logs.output[-1])
+        self.assertIn("1. 대기 트윈 | 트윈 ID DT-1 | 소유 keti | 연계 노드 대기 | 메타정보 출처 -", logs.output[-1])
 
     def test_no_twin_nodes_no_summary(self):
         from unittest import mock

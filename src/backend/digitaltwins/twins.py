@@ -389,23 +389,35 @@ def detail(ref: str) -> Dict[str, Any]:
 
 _LATEST_URL = re.compile(r"^/api/twins/(do|fdo)/([^/]+)/([^/?]+)/latest")
 _BRAIN_URL = re.compile(r"^/api/fedit/objects/latest\?(.*)$")
+_META_URL = re.compile(r"^/api/fedit/metadata/digitalTwins(\?|$)")
 
 
-def refs_in_xml(xml: str) -> List[str]:
-    """다이어그램에서 트윈 노드의 참조를 뽑는다(편집기 twin.js 의 twinRefOf 와 같은 규칙)."""
+def refs_in_xml(xml: str, with_labels: bool = False):
+    """다이어그램에서 연계 현황에 셀 참조를 뽑는다(편집기 twin.js 의 linkageRefOf 와 같은 규칙).
+
+    with_labels=True 이면 (참조 목록, 참조 → 노드 이름) 을 돌려준다.
+    """
     import xml.etree.ElementTree as ET
     from urllib.parse import parse_qs, unquote
 
+    refs: List[str] = []
+    labels: Dict[str, str] = {}
     try:
         root = ET.fromstring(xml or "")
     except ET.ParseError:
-        return []
-    refs: List[str] = []
-    for el in root.iter():
-        if not el.tag.endswith("}parameter") or el.get("url") is None and el.get("twin") is None:
+        return (refs, labels) if with_labels else refs
+    for node in root.iter():
+        if not node.get("id"):
             continue
-        ref = el.get("twin") or ""
-        url = el.get("url") or ""
+        ext = next((c for c in node if c.tag.endswith("}extensionElements")), None)
+        params = next((c for c in ext if c.tag.endswith("}parameters")), None) if ext is not None else None
+        if params is None:
+            continue
+        parameter = next((c for c in params if c.tag.endswith("}parameter")), None)
+        if parameter is None:
+            continue
+        ref = parameter.get("twin") or ""
+        url = parameter.get("url") or ""
         if not ref:
             m = _LATEST_URL.match(url)
             if m:
@@ -416,18 +428,72 @@ def refs_in_xml(xml: str) -> List[str]:
                 q = parse_qs(m.group(1))
                 if q.get("fdt") and q.get("fdo"):
                     ref = f"fdo:{q['fdt'][0]}:{q['fdo'][0]}"
-        if ref:
+        if not ref and _META_URL.match(url):
+            fixed = next((c.get("value") for c in params if c.tag.endswith("}input")
+                          and c.get("name") == "digitalTwinId" and not c.get("source")), "")
+            if fixed and fixed.strip():
+                ref = f"meta:{fixed.strip()}"
+        if ref and ref not in labels:
             refs.append(ref)
-    return list(dict.fromkeys(refs))
+            labels[ref] = node.get("name") or node.get("id")
+    return (refs, labels) if with_labels else refs
 
 
-def linkage(refs: List[str]) -> Dict[str, Any]:
-    """로직이 연계한 단일 트윈(메타정보 종) 목록. 연합 객체는 구성 디지털객체의 트윈으로 펼친다."""
+def _metadata_twins() -> Dict[str, Dict[str, str]]:
+    """2세부 메타데이터 저장소의 디지털 트윈 메타정보(트윈 id → 이름·소유). 토큰이 없거나 실패하면 빈 사전."""
+    from . import fedit_client
+
+    if not fedit_client.is_configured():
+        return {}
+    out: Dict[str, Dict[str, str]] = {}
+    for item in fedit_client.list_resource("digitalTwins"):
+        info = fedit_client.summarize(item)
+        key = info.get("digitalTwinId") or info.get("id")
+        if key:
+            out[key] = {"twinName": info.get("name") or "", "owner": info.get("owner") or ""}
+    return out
+
+
+def linkage(refs: List[str], labels: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """로직이 연계한 단일 트윈(메타정보 종) 목록.
+
+    - do:{트윈}:{객체}  Digital Connector 단일 트윈 디지털객체
+    - fdo:{연합트윈}:{객체}  Digital Brain 연합 객체 → 구성 디지털객체의 트윈으로 펼친다
+    - meta:{트윈}  2세부 메타데이터 저장소에서 메타정보를 조회한 디지털 트윈
+
+    트윈마다 메타정보를 확인한 출처(sources)를 붙인다. Digital Connector 목록을 받지 못하면
+    이름·소유는 2세부 메타데이터 저장소에서 채운다. labels 는 참조 → 노드 이름(연계 노드 표시용).
+    """
+    labels = labels or {}
     entries, index = catalog()
     by_ref = {e["ref"]: e for e in entries}
     twins: Dict[str, Dict[str, Any]] = {}
     unknown: List[str] = []
+    meta_cache: List[Dict[str, Dict[str, str]]] = []
+
+    def meta_info(twin_id: str) -> Dict[str, str]:
+        if not meta_cache:
+            meta_cache.append(_metadata_twins())
+        return meta_cache[0].get(twin_id, {})
+
+    def add(key: str, name: str, owner: str, via: str, source: str) -> None:
+        entry = twins.setdefault(key, {"twinId": key, "twinName": "", "owner": "", "via": [], "sources": []})
+        entry["twinName"] = entry["twinName"] or name
+        entry["owner"] = entry["owner"] or owner
+        if via and via not in entry["via"]:
+            entry["via"].append(via)
+        if source and source not in entry["sources"]:
+            entry["sources"].append(source)
+
     for ref in dict.fromkeys(refs):
+        kind, _, rest = str(ref or "").partition(":")
+        if kind == "meta" and rest:
+            info = meta_info(rest)
+            if not info:
+                unknown.append(ref)
+                continue
+            add(rest, info["twinName"], info["owner"], labels.get(ref) or "메타정보 조회", "2세부 메타데이터 저장소")
+            continue
         try:
             kind, a, b = parse_ref(ref)
         except TwinError:
@@ -435,16 +501,18 @@ def linkage(refs: List[str]) -> Dict[str, Any]:
             continue
         if kind == "do":
             info = index.get(b) or {}
-            key = info.get("twinId") or a
-            twins.setdefault(key, {"twinId": key, "twinName": info.get("twinName", ""), "owner": info.get("owner", ""),
-                                   "via": []})["via"].append(info.get("objectName") or b)
+            source = "Digital Connector" if info else ""
+            if not info:  # Connector 에 닿지 못하면 2세부 저장소 메타정보로 이름을 채운다
+                info = meta_info(a)
+                source = "2세부 메타데이터 저장소" if info else ""
+            add(info.get("twinId") or a, info.get("twinName", ""), info.get("owner", ""),
+                labels.get(ref) or info.get("objectName") or b, source)
         else:
             entry = by_ref.get(ref)
             members = (entry or {}).get("members") or []
             if not members:
                 unknown.append(ref)
             for m in members:
-                key = m.get("twinId") or m["objectId"]
-                twins.setdefault(key, {"twinId": key, "twinName": m.get("twinName", ""), "owner": m.get("owner", ""),
-                                       "via": []})["via"].append(f"{(entry or {}).get('name', b)} › {m.get('objectName') or m['objectId']}")
+                add(m.get("twinId") or m["objectId"], m.get("twinName", ""), m.get("owner", ""),
+                    f"{(entry or {}).get('name', b)} › {m.get('objectName') or m['objectId']}", "Digital Brain")
     return {"count": len(twins), "twins": list(twins.values()), "unresolved": unknown}

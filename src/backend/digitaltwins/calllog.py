@@ -103,12 +103,12 @@ def record(source: str, method: str, url: str, *, params: Optional[Dict[str, Any
 
 
 def run_summary(run_id: Any, diagram: str, twins: Dict[str, Any]) -> None:
-    """로직 실행이 메타정보를 연계한 단일 트윈 요약. 트윈 이름·소유는 Digital Connector 의 트윈 메타정보다."""
+    """로직 실행이 메타정보를 연계한 단일 트윈 요약(트윈마다 메타정보를 확인한 출처 포함)."""
     items = twins.get("twins", [])
-    logger.info("[메타정보 연계] 실행 #%s %s: 단일 트윈 %d종 (메타정보 출처: Digital Connector 단일 트윈 등록 정보)",
-                run_id, diagram or "-", twins.get("count", 0))
+    logger.info("[메타정보 연계] 실행 #%s %s: 단일 트윈 %d종", run_id, diagram or "-", twins.get("count", 0))
     for n, t in enumerate(items, 1):
-        logger.info("[메타정보 연계]   %d. %s | 트윈 ID %s | 소유 %s | 연계 노드 %s", n,
-                    t.get("twinName") or "-", t.get("twinId"), t.get("owner") or "-", " · ".join(t.get("via") or []))
+        logger.info("[메타정보 연계]   %d. %s | 트윈 ID %s | 소유 %s | 연계 노드 %s | 메타정보 출처 %s", n,
+                    t.get("twinName") or "-", t.get("twinId"), t.get("owner") or "-", " · ".join(t.get("via") or []),
+                    ", ".join(t.get("sources") or []) or "-")
     for ref in twins.get("unresolved") or []:
         logger.warning("[메타정보 연계]   확인되지 않은 트윈 참조: %s", ref)

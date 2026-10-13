@@ -367,9 +367,10 @@
                 <b>{{ twin.twinName || twin.twinId }}</b>
                 <span class="linkage__owner">{{ twin.owner }}</span>
                 <div class="linkage__via">{{ twin.via.join(' · ') }}</div>
+                <div v-if="twin.sources && twin.sources.length" class="linkage__source">메타정보 출처: {{ twin.sources.join(', ') }}</div>
               </li>
             </ul>
-            <p v-else-if="linkage" class="bpmn-ai-helper">아직 연계한 트윈 노드가 없습니다. 카탈로그의 '단일 트윈'·'연합 객체'에서 노드를 추가하세요.</p>
+            <p v-else-if="linkage" class="bpmn-ai-helper">아직 연계한 트윈 노드가 없습니다. 카탈로그의 '단일 트윈'·'연합 객체'·'디지털트윈 메타데이터 조회'에서 노드를 추가하세요.</p>
           </div>
 
           <p class="bpmn-ai-helper">
@@ -498,7 +499,7 @@ import TokenSimulationModule from '@/lib/bpmn-js-token-simulation';
 import BpmnColorPickerModule from '@/lib/bpmn-js-color-picker';
 import BpmnPipelinePropertiesModule, {PipelineModdleDescriptor, GetPipelineParameters} from '@/lib/bpmn-js-pipeline-properties';
 import { createCatalogExtension } from '@/lib/bpmn-js-pipeline-properties/util';
-import { twinRefOf } from '@/lib/bpmn-js-pipeline-properties/twin';
+import { linkageRefOf } from '@/lib/bpmn-js-pipeline-properties/twin';
 import BpmnAddExporter from '@/lib/bpmn-js-add-exporter';
 import CatalogPaletteModule from '@/lib/bpmn-js-catalog-palette';
 import { is, getBusinessObject } from 'bpmn-js/lib/util/ModelUtil';
@@ -1652,7 +1653,7 @@ export default {
         const registry = this.bpmn.get("elementRegistry");
         const refs = new Set();
         registry.forEach((el) => {
-          const ref = twinRefOf(el);
+          const ref = linkageRefOf(el);
           if (ref) refs.add(ref);
         });
         const resp = await ApiService.query("/twins/linkage", { params: { refs: [...refs].join(",") } });
@@ -3074,6 +3075,7 @@ export default {
   .linkage__list li { padding: 5px 0; border-top: 1px solid #f3f4f6; }
   .linkage__owner { margin-left: 6px; font-size: 11px; color: #6b7280; }
   .linkage__via { font-size: 11px; color: #4b5563; }
+  .linkage__source { font-size: 10px; color: #9ca3af; }
 
   /* 속성 패널: 트윈 정보 */
   .twin-panel { margin: 4px 12px 10px; font-size: 12px; color: #1f2937; }

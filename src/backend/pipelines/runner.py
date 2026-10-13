@@ -91,14 +91,14 @@ def _log_linkage(run: PipelineRun, background: bool = True) -> None:
     트윈 목록 캐시가 비어 있으면 목록을 새로 받느라 몇 초 걸리므로, 실행 응답을
     늦추지 않도록 따로 스레드에서 남긴다.
     """
-    refs = twins.refs_in_xml(run.xml)
+    refs, labels = twins.refs_in_xml(run.xml, with_labels=True)
     if not refs:
         return
     run_id, diagram = run.pk, run.diagram_uid
 
     def target() -> None:
         try:
-            calllog.run_summary(run_id, diagram, twins.linkage(refs))
+            calllog.run_summary(run_id, diagram, twins.linkage(refs, labels))
         except Exception:  # 기록 실패가 실행 결과에 영향을 주면 안 된다.
             logger.debug("연계 트윈 요약을 남기지 못했습니다 (run=%s)", run_id, exc_info=True)
 

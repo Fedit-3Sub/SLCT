@@ -23,6 +23,20 @@ export function twinRefOf(element) {
   return '';
 }
 
+/**
+ * 연계 현황에 셀 참조. 트윈 노드의 참조에 더해, 2세부 메타데이터 저장소에서
+ * 특정 디지털 트윈의 메타정보를 조회하는 노드(digitalTwinId 고정 값)는 meta:{트윈 id} 로 센다.
+ */
+export function linkageRefOf(element) {
+  const ref = twinRefOf(element);
+  if (ref) return ref;
+  const parameter = getParameter(element);
+  if (!parameter || !/^\/api\/fedit\/metadata\/digitalTwins(\?|$)/.test(parameter.get('url') || '')) return '';
+  const input = getEntries(element, 'pipeline:Input').find((e) => e.get('name') === 'digitalTwinId');
+  const value = input && !input.get('source') && (input.get('value') || '').trim();
+  return value ? `meta:${value}` : '';
+}
+
 export function isMockNode(element) {
   const parameter = getParameter(element);
   return !!parameter && /^\/api\/pipelines\/run/.test(parameter.get('url') || '');

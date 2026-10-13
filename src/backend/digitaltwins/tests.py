@@ -1,6 +1,6 @@
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from . import twins
 
@@ -36,6 +36,21 @@ class TwinLinkageTests(SimpleTestCase):
             result = twins.linkage(["do:DT-1:DO-A", "fdo:F:O"])
         self.assertEqual(result["count"], 2)
         self.assertEqual({t["twinId"] for t in result["twins"]}, {"DT-1", "DT-2"})
+        self.assertEqual(result["twins"][0]["sources"], ["Digital Connector", "Digital Brain"])
+
+    def test_metadata_store_refs_and_connector_outage(self):
+        meta = {"DT-1": {"twinName": "대기 트윈", "owner": "keti"}, "DT-3": {"twinName": "침수 트윈", "owner": "포항시"}}
+        # Connector 목록을 받지 못한 상태(빈 카탈로그)에서도 2세부 저장소 메타정보로 센다.
+        with mock.patch.object(twins, "catalog", return_value=([], {})), \
+             mock.patch.object(twins, "_metadata_twins", return_value=meta):
+            result = twins.linkage(["meta:DT-3", "do:DT-1:DO-A", "meta:DT-1", "meta:NONE"],
+                                   {"meta:DT-3": "침수 트윈 메타정보"})
+        self.assertEqual(result["count"], 2)
+        by_id = {t["twinId"]: t for t in result["twins"]}
+        self.assertEqual(by_id["DT-3"]["via"], ["침수 트윈 메타정보"])
+        self.assertEqual(by_id["DT-1"]["twinName"], "대기 트윈")
+        self.assertEqual(by_id["DT-1"]["sources"], ["2세부 메타데이터 저장소"])
+        self.assertEqual(result["unresolved"], ["meta:NONE"])
 
 
 def _resp(status=200, body=None):
@@ -118,6 +133,34 @@ class IntegrationCallLogTests(SimpleTestCase):
               <pipeline:parameter name="c" url="/api/fedit/objects/latest?fdt=F&amp;fdo=O"/></pipeline:parameters></bpmn:extensionElements></bpmn:serviceTask>
             <bpmn:serviceTask id="D"><bpmn:extensionElements><pipeline:parameters>
               <pipeline:parameter name="d" url="/api/pipelines/run?id=notify.sms"/></pipeline:parameters></bpmn:extensionElements></bpmn:serviceTask>
+            <bpmn:serviceTask id="M" name="침수 트윈 메타정보"><bpmn:extensionElements><pipeline:parameters>
+              <pipeline:parameter name="m" url="/api/fedit/metadata/digitalTwins" method="GET"/>
+              <pipeline:input name="digitalTwinId" value="KR-02-1"/></pipeline:parameters></bpmn:extensionElements></bpmn:serviceTask>
+            <bpmn:serviceTask id="N" name="입력으로 받는 메타정보"><bpmn:extensionElements><pipeline:parameters>
+              <pipeline:parameter name="n" url="/api/fedit/metadata/digitalTwins" method="GET"/>
+              <pipeline:input name="digitalTwinId" source="입력값"/></pipeline:parameters></bpmn:extensionElements></bpmn:serviceTask>
           </bpmn:process></bpmn:definitions>"""
-        self.assertEqual(twins.refs_in_xml(xml), ["do:DT-1:DO-1", "do:DT-2:DO-9", "fdo:F:O"])
+        self.assertEqual(twins.refs_in_xml(xml), ["do:DT-1:DO-1", "do:DT-2:DO-9", "fdo:F:O", "meta:KR-02-1"])
+        refs, labels = twins.refs_in_xml(xml, with_labels=True)
+        self.assertEqual(labels["meta:KR-02-1"], "침수 트윈 메타정보")
         self.assertEqual(twins.refs_in_xml("<not xml"), [])
+
+
+class TwinLinkageApiTests(TestCase):
+    def test_diagram_param_reads_saved_logic(self):
+        from bpmns.models import BpmnDiagram
+
+        xml = """<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:pipeline="pipeline://">
+          <bpmn:process id="P"><bpmn:serviceTask id="M" name="침수 트윈 메타정보"><bpmn:extensionElements><pipeline:parameters>
+            <pipeline:parameter name="m" url="/api/fedit/metadata/digitalTwins"/><pipeline:input name="digitalTwinId" value="DT-3"/>
+          </pipeline:parameters></bpmn:extensionElements></bpmn:serviceTask></bpmn:process></bpmn:definitions>"""
+        BpmnDiagram.objects.create(uid="lk", xml=xml)
+        meta = {"DT-3": {"twinName": "침수 트윈", "owner": "포항시"}}
+        with mock.patch.object(twins, "catalog", return_value=([], {})), \
+             mock.patch.object(twins, "_metadata_twins", return_value=meta):
+            resp = self.client.get("/api/twins/linkage", {"diagram": "lk"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()["data"]
+        self.assertEqual((data["count"], data["diagram"]), (1, "lk"))
+        self.assertEqual(data["twins"][0]["via"], ["침수 트윈 메타정보"])
+        self.assertEqual(self.client.get("/api/twins/linkage", {"diagram": "none"}).status_code, 404)

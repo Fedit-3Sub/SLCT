@@ -222,8 +222,20 @@ class TwinLatestView(APIView):
 
 
 class TwinLinkageView(APIView):
-    """로직이 연계한 단일 트윈 목록. ?refs=do:…,fdo:… (쉼표 구분)."""
+    """로직이 연계한 단일 트윈 목록.
+
+    ?refs=do:…,fdo:…,meta:… (쉼표 구분) 또는 ?diagram={서비스 로직 ID} (저장된 다이어그램에서 뽑는다).
+    """
 
     def get(self, request):
+        uid = (request.query_params.get("diagram") or "").strip()
+        if uid:
+            from bpmns.models import BpmnDiagram
+
+            diagram = BpmnDiagram.objects.filter(uid=uid).first()
+            if diagram is None:
+                return Response({"error": f"서비스 로직을 찾을 수 없습니다: {uid}"}, status=status.HTTP_404_NOT_FOUND)
+            refs, labels = twins.refs_in_xml(diagram.xml, with_labels=True)
+            return Response({"data": {**twins.linkage(refs, labels), "diagram": uid}})
         refs = [r for r in (request.query_params.get("refs") or "").split(",") if r.strip()]
         return Response({"data": twins.linkage(refs)})

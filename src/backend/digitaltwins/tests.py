@@ -165,6 +165,17 @@ class TwinLinkageApiTests(TestCase):
         self.assertEqual(data["twins"][0]["via"], ["침수 트윈 메타정보"])
         self.assertEqual(self.client.get("/api/twins/linkage", {"diagram": "none"}).status_code, 404)
 
+    def test_refs_with_labels_from_editor(self):
+        import json as _json
+        meta = {"DT-3": {"twinName": "침수 트윈", "owner": "포항시"}}
+        with mock.patch.object(twins, "catalog", return_value=([], {})), \
+             mock.patch.object(twins, "_metadata_twins", return_value=meta):
+            data = self.client.get("/api/twins/linkage", {"refs": "meta:DT-3",
+                                                          "labels": _json.dumps({"meta:DT-3": "침수 노드"})}).json()["data"]
+            bad = self.client.get("/api/twins/linkage", {"refs": "meta:DT-3", "labels": "{broken"}).json()["data"]
+        self.assertEqual(data["twins"][0]["via"], ["침수 노드"])
+        self.assertEqual(bad["twins"][0]["via"], ["메타정보 조회"])
+
 
 class MetadataSingleLookupTests(TestCase):
     """특정 트윈 메타정보는 단건 조회로 받아 호출 주소에 트윈 id 가 남는다."""

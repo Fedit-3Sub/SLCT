@@ -4,6 +4,7 @@ from rest_framework import status
 from . import brain, catalog, fedit_client, twins
 from .models import DigitalTwinSource, DigitalTwinCallLog
 from .serializers import DigitalTwinSourceSerializer, DigitalTwinCallLogSerializer
+import json
 import time
 
 
@@ -244,4 +245,11 @@ class TwinLinkageView(APIView):
             refs, labels = twins.refs_in_xml(diagram.xml, with_labels=True)
             return Response({"data": {**twins.linkage(refs, labels), "diagram": uid}})
         refs = [r for r in (request.query_params.get("refs") or "").split(",") if r.strip()]
-        return Response({"data": twins.linkage(refs)})
+        try:  # labels: {"참조": "노드 이름"} (편집기가 연계 노드 이름을 함께 보낸다)
+            labels = json.loads(request.query_params.get("labels") or "{}")
+        except ValueError:
+            labels = {}
+        if not isinstance(labels, dict):
+            labels = {}
+        labels = {str(k): str(v)[:120] for k, v in labels.items()}
+        return Response({"data": twins.linkage(refs, labels)})

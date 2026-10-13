@@ -1652,11 +1652,16 @@ export default {
       try {
         const registry = this.bpmn.get("elementRegistry");
         const refs = new Set();
+        const labels = {};
         registry.forEach((el) => {
           const ref = linkageRefOf(el);
-          if (ref) refs.add(ref);
+          if (!ref) return;
+          refs.add(ref);
+          if (!labels[ref]) labels[ref] = (el.businessObject && el.businessObject.name) || el.id;
         });
-        const resp = await ApiService.query("/twins/linkage", { params: { refs: [...refs].join(",") } });
+        const resp = await ApiService.query("/twins/linkage", {
+          params: { refs: [...refs].join(","), labels: JSON.stringify(labels) },
+        });
         this.linkage = resp.data.data;
       } catch (e) {
         this.linkageError = "연계 현황을 불러오지 못했습니다.";

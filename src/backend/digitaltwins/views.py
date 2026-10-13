@@ -171,9 +171,15 @@ class FeditMetadataResourceView(APIView):
         if not fedit_client.is_configured():
             return Response({"error": "메타데이터 저장소 토큰(FEDIT_META_TOKEN)이 설정되지 않았습니다."},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        items = [fedit_client.summarize(x) for x in fedit_client.list_resource(resource)]
         wanted_id = next((request.query_params.get(k) for k in self.ID_ALIASES if request.query_params.get(k)), "")
         query = next((request.query_params.get(k) for k in self.QUERY_ALIASES if request.query_params.get(k)), "")
+        if wanted_id and not query:
+            # 한 건은 저장소의 단건 조회(/resource/{분류}/{id})로 받는다. 연계 항목 수까지 나온다.
+            one = fedit_client.get_resource(resource, wanted_id)
+            if one is not None:
+                item = fedit_client.detail_summary(one)
+                return Response({"data": {"count": 1, "names": [item["name"]], "items": [item], **item}})
+        items = [fedit_client.summarize(x) for x in fedit_client.list_resource(resource)]
         if wanted_id:
             items = [i for i in items if i["id"] == wanted_id or i["digitalTwinId"] == wanted_id]
         if query:

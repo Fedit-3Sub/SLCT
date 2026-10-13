@@ -164,3 +164,32 @@ class TwinLinkageApiTests(TestCase):
         self.assertEqual((data["count"], data["diagram"]), (1, "lk"))
         self.assertEqual(data["twins"][0]["via"], ["침수 트윈 메타정보"])
         self.assertEqual(self.client.get("/api/twins/linkage", {"diagram": "none"}).status_code, 404)
+
+
+class MetadataSingleLookupTests(TestCase):
+    """특정 트윈 메타정보는 단건 조회로 받아 호출 주소에 트윈 id 가 남는다."""
+
+    ONE = {"data": {"dtid": "KR-02-K60000-20260002", "name": "네트로 포항 침수 디지털 트윈", "owner": "경상북도 포항시",
+                    "metaModel": "SingleDigitalTwin", "sensors": [{}, {}], "services": [], "simulations": [{}],
+                    "pointOfAccess": "https://example.org"}}
+
+    def test_single_lookup_url_has_twin_id(self):
+        with mock.patch.dict("os.environ", {"FEDIT_META_TOKEN": "t"}), \
+             mock.patch("requests.get", return_value=_resp(200, self.ONE)) as get, \
+             self.assertLogs("slct.integration", "INFO") as logs:
+            resp = self.client.get("/api/fedit/metadata/digitalTwins", {"digitalTwinId": "KR-02-K60000-20260002"})
+        data = resp.json()["data"]
+        self.assertEqual((data["count"], data["name"], data["owner"]), (1, "네트로 포항 침수 디지털 트윈", "경상북도 포항시"))
+        self.assertEqual((data["센서수"], data["시뮬레이션수"]), (2, 1))
+        self.assertTrue(get.call_args.args[0].endswith("/resource/digitalTwins/KR-02-K60000-20260002"))
+        self.assertIn("/resource/digitalTwins/KR-02-K60000-20260002", logs.output[0])
+
+    def test_falls_back_to_list_filter(self):
+        listing = {"data": {"list": [{"dtid": "DT-9", "name": "다른 트윈"}]}}
+
+        def fake(url, params=None, headers=None, timeout=None):
+            return _resp(404) if url.endswith("/DT-9") else _resp(200, listing)
+
+        with mock.patch.dict("os.environ", {"FEDIT_META_TOKEN": "t"}), mock.patch("requests.get", side_effect=fake):
+            data = self.client.get("/api/fedit/metadata/digitalTwins", {"digitalTwinId": "DT-9"}).json()["data"]
+        self.assertEqual((data["count"], data["name"]), (1, "다른 트윈"))

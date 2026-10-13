@@ -171,13 +171,37 @@ def list_simulations(page_size: int = 50) -> List[Dict[str, Any]]:
 
 def get_digital_twin(digital_twin_id: str) -> Optional[Dict[str, Any]]:
     """디지털트윈 상세 메타데이터."""
-    if not digital_twin_id:
+    return get_resource("digitalTwins", digital_twin_id)
+
+
+def get_resource(resource: str, item_id: str) -> Optional[Dict[str, Any]]:
+    """메타데이터 항목 한 건(`/resource/{분류}/{id}`). 없거나 실패하면 None.
+
+    목록 조회와 달리 요청 주소에 항목 id 가 그대로 남아, 어떤 트윈의 메타정보를
+    조회했는지 호출 기록에서 바로 확인할 수 있다.
+    """
+    if not item_id:
         return None
-    payload = _get(
-        f"/resource/digitalTwins/{digital_twin_id}",
-        {"arrayDataLimitYn": "Y", "arrayDataLimit": 50},
-    )
-    return payload if isinstance(payload, dict) else None
+    payload = _get(f"/resource/{resource}/{item_id}", {"arrayDataLimitYn": "Y", "arrayDataLimit": 50})
+    if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+        payload = payload["data"]
+    return payload if isinstance(payload, dict) and payload else None
+
+
+# 단건 메타정보에서 연계 항목(배열) 수를 세어 노드 출력으로 내놓는다.
+RELATED_KEYS = {"sensors": "센서수", "controllers": "제어기수", "services": "서비스수",
+                "simulations": "시뮬레이션수", "visualModels": "시각화모델수", "digitalObjects": "디지털객체수"}
+
+
+def detail_summary(item: Dict[str, Any]) -> Dict[str, Any]:
+    """단건 메타정보 요약: 공통 필드 + 연계 항목 수 + 접근 주소."""
+    info = summarize(item)
+    for key, label in RELATED_KEYS.items():
+        value = item.get(key)
+        info[label] = len(value) if isinstance(value, list) else 0
+    info["pointOfAccess"] = item.get("pointOfAccess") or ""
+    info["modificationTime"] = item.get("modificationTime") or ""
+    return info
 
 
 def status() -> Dict[str, Any]:

@@ -17,7 +17,11 @@ services:
   
   frontend:
     container_name: frontend
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # 편집기 도구모음에 표시되는 버전. 예) SLCT_VERSION=$(git rev-parse --short HEAD) docker compose up --build -d
+        VITE_APP_VERSION: ${SLCT_VERSION:-v2.0}
     image: bpmn-frontend:latest
     restart: unless-stopped
     environment:

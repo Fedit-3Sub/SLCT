@@ -3,7 +3,7 @@
     <div ref="container" class="vue-bpmn-diagram-container"></div>
     <aside class="bpmn-sidebar">
       <div v-if="!editable" class="readonly-banner">
-        보기 전용입니다. 수정·실행하려면 편집 토큰이 포함된 주소(<code>?token=…</code>)로 접속하세요.
+        보기 전용입니다. 실행·시뮬레이션·API 확인은 그대로 할 수 있고, 수정하려면 편집 토큰이 포함된 주소(<code>?token=…</code>)로 접속하세요.
       </div>
       <section class="bpmn-tools">
         <header class="bpmn-tools__header">

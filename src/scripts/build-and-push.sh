@@ -28,7 +28,8 @@ done
 
 need docker
 TAG="${TAG:-$(TZ=Asia/Seoul date +%Y%m%d)}"
-VERSION="$(git -C "${SRC_DIR}" rev-parse --short HEAD 2>/dev/null || echo "${TAG}")"
+# 편집기에 표시할 버전. SLCT_VERSION 이 있으면 그 값(예: v2.0), 없으면 git 해시.
+VERSION="${SLCT_VERSION:-$(git -C "${SRC_DIR}" rev-parse --short HEAD 2>/dev/null || echo "${TAG}")}"
 HOST="${REGISTRY%%/*}"
 
 if [[ $DO_PUSH -eq 1 ]]; then

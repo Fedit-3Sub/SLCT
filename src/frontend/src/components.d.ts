@@ -15,7 +15,6 @@ declare module 'vue' {
     Heading1: typeof import('./components/shared/Heading1.vue')['default']
     Heading2: typeof import('./components/shared/Heading2.vue')['default']
     Hero: typeof import('./components/Hero.vue')['default']
-    Label: typeof import('~icons/la/bel')['default']
     Navbar: typeof import('./components/Navbar.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

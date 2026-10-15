@@ -148,6 +148,13 @@ kubectl apply -f ./k8s/ingress.yaml
 
 ---
 
+## 라이선스
+
+GNU Lesser General Public License v2.1 — [LICENSE](LICENSE) 참고.
+포함된 외부 구성요소(bpmn.io 등)의 라이선스와 고지 사항은 [src/THIRD_PARTY_NOTICES.md](src/THIRD_PARTY_NOTICES.md)에 있습니다.
+
+---
+
 ## Acknowledgments
 
 This project uses [bpmn-js](https://github.com/bpmn-io/bpmn-js) and related tools from [bpmn.io](https://bpmn.io/).

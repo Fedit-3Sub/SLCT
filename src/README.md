@@ -123,3 +123,10 @@ python3 main.py                   # 0.0.0.0:9901
 ```
 http://localhost:9900/<다이어그램id>
 ```
+
+## 라이선스
+
+GNU Lesser General Public License v2.1 — [LICENSE](LICENSE) 참고.
+
+`frontend/src/lib/` 의 bpmn.io 구성요소 등 포함된 외부 소스는 각자의 원 라이선스를 따릅니다.
+목록과 고지 사항은 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 있습니다.

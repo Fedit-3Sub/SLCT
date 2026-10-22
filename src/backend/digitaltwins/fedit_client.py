@@ -9,7 +9,7 @@
     FEDIT_META_TOKEN     Bearer 토큰. **비어 있으면 이 클라이언트는 비활성**
     FEDIT_META_TIMEOUT   요청 제한시간(초, 기본 5)
 
-토큰은 자격증명이므로 저장소에 두지 않는다. 환경변수나 배포 시크릿으로 주입한다.
+기본 토큰은 backend/.env(.env.example)에 들어 있다. 다른 토큰을 쓰려면 환경변수로 덮어쓴다.
 
 주요 경로 (Swagger: {base}/meta/swagger-ui/index.html)
     GET /meta/api/v1/resource/digitalTwins             디지털트윈 목록

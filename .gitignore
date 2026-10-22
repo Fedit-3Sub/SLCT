@@ -8,6 +8,10 @@
 **/.env
 !**/.env.example
 !**/.env-sample
+# 설치에 바로 쓰는 환경 변수 파일(2세부 메타데이터 저장소 토큰 포함)
+!src/backend/.env
+!src/frontend/.env
+!src/processor/.env
 
 # OS
 .DS_Store

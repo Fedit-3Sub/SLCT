@@ -396,6 +396,23 @@ class EditTokenTests(TestCase):
         self.assertEqual(self.client.get("/api/auth/edit").json()["data"], {"required": True, "editable": False})
         self.assertEqual(self.client.get("/api/auth/edit", HTTP_X_SLCT_TOKEN="secret-token").json()["data"]["editable"], True)
 
+    def test_keti_diagram_editable_without_token(self):
+        xml = logic_diagram()
+        post = lambda url, body: self.client.post(url, body, content_type="application/json").status_code
+        # 생성·저장·실행·권한 확인 모두 토큰 없이 된다.
+        self.assertEqual(post("/api/bpmns", {"data": {"uid": "keti", "xml": xml}}), 201)
+        pk = BpmnDiagram.objects.get(uid="keti").pk
+        put = lambda pk, body: self.client.put(f"/api/bpmns/{pk}", body, content_type="application/json").status_code
+        self.assertEqual(put(pk, {"data": {"xml": xml}}), 200)
+        self.assertEqual(post("/api/pipelines/execute", {"uid": "keti", "xml": xml, "wait": True}), 200)
+        self.assertEqual(self.client.get("/api/auth/edit?diagram=keti").json()["data"]["editable"], True)
+        # 다른 다이어그램과 ID 바꾸기, 연합트윈 등록은 여전히 막힌다.
+        self.assertEqual(put(pk, {"data": {"uid": "other", "xml": xml}}), 403)
+        self.assertEqual(put(BpmnDiagram.objects.get(uid="open").pk, {"data": {"xml": xml}}), 403)
+        self.assertEqual(post("/api/pipelines/execute", {"uid": "open", "xml": xml}), 403)
+        self.assertEqual(post("/api/logics/keti/fedit", {}), 403)
+        self.assertEqual(self.client.get("/api/auth/edit?diagram=open").json()["data"]["editable"], False)
+
 
 class ExternalWriteGuardTests(SimpleTestCase):
     def test_external_post_blocked_by_default(self):

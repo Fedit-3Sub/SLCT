@@ -922,7 +922,8 @@ export default {
 
     async checkEditPermission() {
       try {
-        const resp = await ApiService.get("/auth/edit");
+        // 로직 ID 를 함께 보내 토큰 없이 편집할 수 있는 다이어그램(keti 등)인지도 확인한다.
+        const resp = await ApiService.query("/auth/edit", { params: { diagram: this.id } });
         const info = resp.data.data || {};
         this.editTokenRequired = !!info.required;
         this.editable = !!info.editable;
@@ -1003,7 +1004,7 @@ export default {
         let run;
         if (this.editable) {
           const { xml } = await this.bpmn.saveXML();
-          run = (await ApiService.post('/pipelines/execute', { xml, inputs, wait: true })).data.data;
+          run = (await ApiService.post('/pipelines/execute', { uid: this.id, xml, inputs, wait: true })).data.data;
         } else {
           const runId = (await ApiService.post(`/logics/${this.id}/invoke`, inputs)).data.data.runId;
           run = (await ApiService.get(`/pipelines/runs/${runId}`)).data.data;

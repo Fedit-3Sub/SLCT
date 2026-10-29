@@ -6,7 +6,7 @@ from drf_yasg import openapi
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.edit_token import configured_token, is_editor
+from core.edit_token import configured_token, is_editor, open_diagrams
 
 # Django Admin 한글 브랜딩
 admin.site.site_header = "연합트윈 관리자"
@@ -26,10 +26,15 @@ schema_view = get_schema_view(
 
 
 class EditTokenCheckView(APIView):
-    """편집기가 쓰기 권한이 있는지 확인한다. 토큰 값은 돌려주지 않는다."""
+    """편집기가 쓰기 권한이 있는지 확인한다. 토큰 값은 돌려주지 않는다.
+
+    `?diagram=<로직ID>` 를 주면 토큰 없이 편집할 수 있는 다이어그램인지도 함께 본다.
+    """
 
     def get(self, request):
-        return Response({"data": {"required": bool(configured_token()), "editable": is_editor(request)}})
+        diagram = (request.query_params.get("diagram") or "").strip()
+        editable = is_editor(request) or diagram in open_diagrams()
+        return Response({"data": {"required": bool(configured_token()), "editable": editable}})
 
 
 urlpatterns = [

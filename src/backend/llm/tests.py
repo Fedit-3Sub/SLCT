@@ -68,6 +68,12 @@ class PlannerTests(SimpleTestCase):
         self.assertEqual(plan["final_actions"], ["결과 저장"])
         self.assertEqual(plan["extra_steps"], [])
 
+    def test_threshold_skips_metric_name_digits(self):
+        from . import planner
+        plan = planner.normalize_plan({"sources": ["포항 대기 실데이터"], "check": {"metric": "pm10", "op": ">", "threshold": 10}},
+                                      "포항 대기 환경 미세먼지(PM10)가 80을 넘으면 유관기관에 통보", self.SOURCES)
+        self.assertEqual((plan["check"]["metric"], plan["check"]["op"], plan["check"]["threshold"]), ("pm10", ">", 80))
+
     def test_built_spec_runs_and_orders_dependencies(self):
         from pipelines.engine import CallResult, Engine
         from . import planner

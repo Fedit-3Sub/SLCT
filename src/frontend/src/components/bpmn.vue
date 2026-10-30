@@ -2189,9 +2189,46 @@ export default {
       }
       try {
         const layouted = await layoutProcess(xml);
-        return layouted || xml;
+        return layouted ? this.placeGatewayLabelsAbove(layouted) : xml;
       } catch (e) {
         console.error('자동 레이아웃 실패', e);
+        return xml;
+      }
+    },
+    placeGatewayLabelsAbove(xml) {
+      // 자동 레이아웃은 분기 라벨을 마름모 아래에 두어, 아래로 꺾이는 흐름(아니오·기본 흐름)과 겹친다.
+      // 라벨 위치가 없는 게이트웨이는 라벨을 마름모 위로 올린다.
+      try {
+        const doc = new DOMParser().parseFromString(xml, 'application/xml');
+        if (doc.getElementsByTagName('parsererror').length) return xml;
+        const BPMN = 'http://www.omg.org/spec/BPMN/20100524/MODEL';
+        const DI = 'http://www.omg.org/spec/BPMN/20100524/DI';
+        const DC = 'http://www.omg.org/spec/DD/20100524/DC';
+        const gateways = new Set(
+          Array.from(doc.getElementsByTagNameNS(BPMN, '*'))
+            .filter((el) => /Gateway$/.test(el.localName) && el.getAttribute('name'))
+            .map((el) => el.getAttribute('id')),
+        );
+        Array.from(doc.getElementsByTagNameNS(DI, 'BPMNShape')).forEach((shape) => {
+          if (!gateways.has(shape.getAttribute('bpmnElement'))) return;
+          if (shape.getElementsByTagNameNS(DI, 'BPMNLabel').length) return;
+          const box = shape.getElementsByTagNameNS(DC, 'Bounds')[0];
+          if (!box) return;
+          const x = Number(box.getAttribute('x'));
+          const y = Number(box.getAttribute('y'));
+          const w = Number(box.getAttribute('width'));
+          const label = doc.createElementNS(DI, 'bpmndi:BPMNLabel');
+          const bounds = doc.createElementNS(DC, 'dc:Bounds');
+          bounds.setAttribute('x', String(x - 30));
+          bounds.setAttribute('y', String(y - 22));
+          bounds.setAttribute('width', String(w + 60));
+          bounds.setAttribute('height', '14');
+          label.appendChild(bounds);
+          shape.appendChild(label);
+        });
+        return new XMLSerializer().serializeToString(doc);
+      } catch (e) {
+        console.error('게이트웨이 라벨 배치 실패', e);
         return xml;
       }
     },
@@ -2722,8 +2759,9 @@ export default {
     display: flex;
     gap: 6px;
   }
-  .copilot-pending__apply,
-  .copilot-pending__dismiss {
+  /* Tailwind 기본값 [type="button"] { background-color: transparent } 보다 우선하도록 부모 클래스를 붙인다 */
+  .copilot-pending__actions .copilot-pending__apply,
+  .copilot-pending__actions .copilot-pending__dismiss {
     border: 1px solid #2563eb;
     border-radius: 9999px;
     background: #2563eb;
@@ -2733,15 +2771,15 @@ export default {
     cursor: pointer;
     transition: background 0.2s ease;
   }
-  .copilot-pending__apply:hover {
+  .copilot-pending__actions .copilot-pending__apply:hover {
     background: #1d4ed8;
   }
-  .copilot-pending__dismiss {
+  .copilot-pending__actions .copilot-pending__dismiss {
     background: #fff;
     color: #1d4ed8;
     border-color: #93c5fd;
   }
-  .copilot-pending__dismiss:hover {
+  .copilot-pending__actions .copilot-pending__dismiss:hover {
     background: #ebf2ff;
   }
   .copilot-composer-field {

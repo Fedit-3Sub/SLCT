@@ -717,8 +717,8 @@ export default {
         pipeline: PipelineModdleDescriptor
       },
       exporter: {
-        name: 'kt-bpmn',
-        version: '1.0.0'
+        name: 'slct',
+        version: '2.0'
       },      
     }, this.options);
 

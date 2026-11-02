@@ -2138,10 +2138,9 @@ export default {
       if (summary) {
         this.copilotMessages.push(this.createCopilotMessage('assistant', summary));
       }
-      const label = source || 'AI';
       this.copilotMessages.push(this.createCopilotMessage(
         'assistant',
-        `${label}가 새로운 BPMN XML을 준비했습니다. 아래 "적용" 버튼을 눌러 적용하거나 "무시"를 선택할 수 있습니다.`
+        '새로운 BPMN XML이 준비되었습니다. 아래 "적용" 버튼을 눌러 적용하거나 "무시"를 선택할 수 있습니다.'
       ));
       this.scrollCopilotToBottom();
     },

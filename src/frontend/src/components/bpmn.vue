@@ -2196,30 +2196,30 @@ export default {
     },
     placeGatewayLabelsAbove(xml) {
       // 자동 레이아웃은 분기 라벨을 마름모 아래에 두어, 아래로 꺾이는 흐름(아니오·기본 흐름)과 겹친다.
-      // 라벨 위치가 없는 게이트웨이는 라벨을 마름모 위로 올린다.
+      // 라벨 위치가 없는 게이트웨이는 라벨을 마름모 위로 올리고, 이벤트 라벨은 원과 겹치지 않게 조금 띄워 아래에 둔다.
       try {
         const doc = new DOMParser().parseFromString(xml, 'application/xml');
         if (doc.getElementsByTagName('parsererror').length) return xml;
         const BPMN = 'http://www.omg.org/spec/BPMN/20100524/MODEL';
         const DI = 'http://www.omg.org/spec/BPMN/20100524/DI';
         const DC = 'http://www.omg.org/spec/DD/20100524/DC';
-        const gateways = new Set(
-          Array.from(doc.getElementsByTagNameNS(BPMN, '*'))
-            .filter((el) => /Gateway$/.test(el.localName) && el.getAttribute('name'))
-            .map((el) => el.getAttribute('id')),
-        );
+        const named = Array.from(doc.getElementsByTagNameNS(BPMN, '*')).filter((el) => el.getAttribute('name'));
+        const gateways = new Set(named.filter((el) => /Gateway$/.test(el.localName)).map((el) => el.getAttribute('id')));
+        const events = new Set(named.filter((el) => /Event$/.test(el.localName)).map((el) => el.getAttribute('id')));
         Array.from(doc.getElementsByTagNameNS(DI, 'BPMNShape')).forEach((shape) => {
-          if (!gateways.has(shape.getAttribute('bpmnElement'))) return;
+          const id = shape.getAttribute('bpmnElement');
+          if (!gateways.has(id) && !events.has(id)) return;
           if (shape.getElementsByTagNameNS(DI, 'BPMNLabel').length) return;
           const box = shape.getElementsByTagNameNS(DC, 'Bounds')[0];
           if (!box) return;
           const x = Number(box.getAttribute('x'));
           const y = Number(box.getAttribute('y'));
           const w = Number(box.getAttribute('width'));
+          const h = Number(box.getAttribute('height'));
           const label = doc.createElementNS(DI, 'bpmndi:BPMNLabel');
           const bounds = doc.createElementNS(DC, 'dc:Bounds');
           bounds.setAttribute('x', String(x - 30));
-          bounds.setAttribute('y', String(y - 22));
+          bounds.setAttribute('y', String(gateways.has(id) ? y - 22 : y + h + 6));
           bounds.setAttribute('width', String(w + 60));
           bounds.setAttribute('height', '14');
           label.appendChild(bounds);
